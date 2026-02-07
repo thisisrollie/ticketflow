@@ -1,0 +1,46 @@
+name: CI Workflow
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ticketflow
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d ticketflow"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+    env:
+      SPRING_PROFILES_ACTIVE: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: ticketflow
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: maven
+
+      - name: Build + Test with Maven
+        run: ./mvnw clean verify
+
+
