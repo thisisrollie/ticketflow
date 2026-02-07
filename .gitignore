@@ -1,0 +1,29 @@
+# Maven
+target/
+
+# Logs
+*.log
+logs/
+*.pid
+
+# OS
+.DS_Store
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code
+.vscode/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Editor temp files
+*~
+*.swp
