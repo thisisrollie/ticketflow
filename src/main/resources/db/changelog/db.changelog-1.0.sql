@@ -21,7 +21,7 @@ CREATE TABLE tickets
     created_by_id  INT REFERENCES users (id) NOT NULL,
     assigned_to_id INT REFERENCES users (id),
     created_at     TIMESTAMPTZ               NOT NULL,
-    updated_at     TIMESTAMPTZ,
+    modified_at    TIMESTAMPTZ,
     resolved_at    TIMESTAMPTZ,
     version        INT                       NOT NULL
 );
