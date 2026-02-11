@@ -3,8 +3,7 @@ package com.rolliedev.ticketflow.integration;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
-import com.rolliedev.ticketflow.entity.enums.TicketPriority;
-import com.rolliedev.ticketflow.entity.enums.TicketStatus;
+import com.rolliedev.ticketflow.util.DataUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.junit.jupiter.api.Test;
@@ -15,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("test")
-@SpringBootTest
 @Transactional
+@SpringBootTest
 @RequiredArgsConstructor
 public class AuditIT {
 
@@ -24,11 +23,7 @@ public class AuditIT {
 
     @Test
     void checkUserAudit() {
-        UserEntity user = UserEntity.builder()
-                .fullName("Clark Kent")
-                .email("clark.kent@gmail.com")
-                .role(Role.CUSTOMER)
-                .build();
+        UserEntity user = DataUtils.getTransientUser("Clark", "Kent", Role.CUSTOMER);
 
         entityManager.persist(user);
 
@@ -38,21 +33,10 @@ public class AuditIT {
 
     @Test
     void checkTicketAudit() {
-        UserEntity customer = UserEntity.builder()
-                .fullName("Clark Kent")
-                .email("clark.kent@gmail.com")
-                .role(Role.CUSTOMER)
-                .build();
+        UserEntity customer = DataUtils.getTransientUser("Clark", "Kent", Role.CUSTOMER);
         entityManager.persist(customer);
 
-        TicketEntity ticket = TicketEntity.builder()
-                .title("Test ticket")
-                .description("Test ticket description")
-                .status(TicketStatus.OPEN)
-                .priority(TicketPriority.MEDIUM)
-                .createdBy(customer)
-                .build();
-
+        TicketEntity ticket = DataUtils.getTransientTicket("Test ticket", "Test ticket description", customer);
         entityManager.persist(ticket);
 
         assertThat(ticket.getId()).isNotNull();
