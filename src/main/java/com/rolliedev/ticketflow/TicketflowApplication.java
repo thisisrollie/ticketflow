@@ -9,5 +9,4 @@ public class TicketflowApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(TicketflowApplication.class, args);
 	}
-
 }

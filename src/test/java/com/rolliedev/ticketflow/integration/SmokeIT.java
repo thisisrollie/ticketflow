@@ -19,7 +19,7 @@ public class SmokeIT {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "users", "tickets"
+            "users", "tickets", "ticket_comments", "ticket_events"
     })
     void checkIfTablesExist(String tableName) {
         Integer countResult = jdbcTemplate.queryForObject("SELECT count(*) FROM information_schema.tables " +
@@ -30,7 +30,9 @@ public class SmokeIT {
     @ParameterizedTest
     @CsvSource({
             "1, rollie, db.changelog-1.0.sql",
-            "2, rollie, db.changelog-1.0.sql"
+            "2, rollie, db.changelog-1.0.sql",
+            "3, rollie, db.changelog-1.0.sql",
+            "4, rollie, db.changelog-1.0.sql",
     })
     void checkIfChangesetsApplied(String id, String author, String filenameSuffix) {
         Integer actualResult = jdbcTemplate.queryForObject("""

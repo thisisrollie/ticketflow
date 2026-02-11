@@ -2,6 +2,7 @@ package com.rolliedev.ticketflow.entity;
 
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,20 +13,23 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
-@Data
-@EqualsAndHashCode(callSuper = false)
+@Getter
+@Setter
 @ToString(exclude = {"createdBy", "assignedTo"})
 @NoArgsConstructor
 @AllArgsConstructor
@@ -68,4 +72,15 @@ public class TicketEntity extends AuditingEntity<Long> {
     private Instant modifiedAt;
 
     private Instant resolvedAt;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TicketCommentEntity> comments = new ArrayList<>();
+
+    public void addComments(TicketCommentEntity... comments) {
+        this.comments.addAll(List.of(comments));
+        for (TicketCommentEntity comment : comments) {
+            comment.setTicket(this);
+        }
+    }
 }
