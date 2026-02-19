@@ -1,7 +1,7 @@
 package com.rolliedev.ticketflow.integration.repository;
 
 import com.querydsl.core.types.Predicate;
-import com.rolliedev.ticketflow.dto.TicketFilter;
+import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
@@ -65,8 +65,8 @@ class TicketRepositoryIT {
 
     @Test
     void shouldReturnMatchingTicketsWhenFilterByStatusAndCreatorId() {
-        Predicate predicate = TicketFilter.buildPredicate(
-                TicketFilter.builder()
+        Predicate predicate = TicketSearchFilter.buildPredicate(
+                TicketSearchFilter.builder()
                         .status(TicketStatus.NEW)
                         .creatorId(customer.getId())
                         .build()
@@ -86,8 +86,8 @@ class TicketRepositoryIT {
 
     @Test
     void shouldReturnSortedPageWhenFilterByCreatorId() {
-        Predicate predicate = TicketFilter.buildPredicate(
-                TicketFilter.builder()
+        Predicate predicate = TicketSearchFilter.buildPredicate(
+                TicketSearchFilter.builder()
                         .creatorId(customer.getId())
                         .build()
         );
@@ -111,8 +111,8 @@ class TicketRepositoryIT {
         TicketEntity ticket5 = DataUtils.getTransientTicket("Billing discrepancy", "YouTube charged me twice for last month", TicketStatus.IN_PROGRESS, TicketPriority.CRITICAL, customer, null);
         ticketRepo.saveAllAndFlush(List.of(ticket4, ticket5));
 
-        Predicate predicate = TicketFilter.buildPredicate(
-                TicketFilter.builder()
+        Predicate predicate = TicketSearchFilter.buildPredicate(
+                TicketSearchFilter.builder()
                         .keyword("youtube")
                         .build()
         );

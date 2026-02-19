@@ -11,17 +11,17 @@ import java.time.Instant;
 import static com.rolliedev.ticketflow.entity.QTicketEntity.ticketEntity;
 
 @Builder
-public record TicketFilter(String keyword,
-                           TicketStatus status,
-                           TicketPriority priority,
-                           Integer creatorId,
-                           Integer assigneeId,
-                           Instant createdBefore,
-                           Instant createdAfter) {
+public record TicketSearchFilter(String keyword,
+                                 TicketStatus status,
+                                 TicketPriority priority,
+                                 Integer creatorId,
+                                 Integer assigneeId,
+                                 Instant createdBefore,
+                                 Instant createdAfter) {
 
-    public static Predicate buildPredicate(TicketFilter filter) {
+    public static Predicate buildPredicate(TicketSearchFilter filter) {
         return QPredicates.builder()
-                .add(filter.keyword, TicketFilter::keywordPredicate)
+                .add(filter.keyword, TicketSearchFilter::keywordPredicate)
                 .add(filter.status, ticketEntity.status::eq)
                 .add(filter.priority, ticketEntity.priority::eq)
                 .add(filter.creatorId, ticketEntity.createdBy.id::eq)
