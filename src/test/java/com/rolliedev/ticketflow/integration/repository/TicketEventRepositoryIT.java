@@ -1,10 +1,10 @@
 package com.rolliedev.ticketflow.integration.repository;
 
+import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
-import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.integration.annotation.JpaIT;
 import com.rolliedev.ticketflow.repository.TicketEventRepository;
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Sort;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,9 +38,9 @@ class TicketEventRepositoryIT {
         TicketEntity ticket = DataUtils.getTransientTicket("Can't log in", "Getting error when logging in with Google", customer);
         ticketRepo.save(ticket);
 
-        TicketEventEntity event1 = DataUtils.getTransientTicketEvent(ticket, customer, TicketEventType.CREATED, Map.of("ticketId", ticket.getId().intValue()));
-        TicketEventEntity event2 = DataUtils.getTransientTicketEvent(ticket, customer, TicketEventType.COMMENTED, Map.of("commentId", 4));
-        TicketEventEntity event3 = DataUtils.getTransientTicketEvent(ticket, customer, TicketEventType.STATUS_CHANGED, Map.of("newStatus", TicketStatus.CLOSED.name()));
+        TicketEventEntity event1 = DataUtils.getTransientTicketCreatedEvent(ticket, customer);
+        TicketEventEntity event2 = DataUtils.getTransientTicketCommentedEvent(ticket, customer, TicketCommentEntity.builder().id(4L).build());
+        TicketEventEntity event3 = DataUtils.getTransientTicketStatusChangedEvent(ticket, customer, ticket.getStatus(), TicketStatus.CLOSED);
         ticketEventRepo.saveAllAndFlush(List.of(event1, event2, event3));
         entityManager.clear();
 

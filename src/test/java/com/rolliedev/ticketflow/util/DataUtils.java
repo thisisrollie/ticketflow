@@ -10,6 +10,7 @@ import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import lombok.experimental.UtilityClass;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @UtilityClass
@@ -49,7 +50,42 @@ public final class DataUtils {
                 .build();
     }
 
-    public static TicketEventEntity getTransientTicketEvent(TicketEntity ticket, UserEntity actor, TicketEventType eventType, Map<String, Object> payload) {
+    public static TicketEventEntity getTransientTicketCreatedEvent(TicketEntity ticket, UserEntity actor) {
+        return getTransientTicketEvent(ticket, actor, TicketEventType.CREATED, Map.of(
+                "ticketId", ticket.getId().toString(),
+                "createdById", actor.getId().toString()
+        ));
+    }
+
+    public static TicketEventEntity getTransientTicketAssignedEvent(TicketEntity ticket, UserEntity actor, UserEntity assignee, UserEntity previousAssignee) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("previousAssigneeId", previousAssignee == null ? null : previousAssignee.getId().toString());
+        payload.put("assigneeId", assignee.getId().toString());
+
+        return getTransientTicketEvent(ticket, actor, TicketEventType.ASSIGNED, payload);
+    }
+
+    public TicketEventEntity getTransientTicketPriorityChangedEvent(TicketEntity ticket, UserEntity actor, TicketPriority oldPriority, TicketPriority newPriority) {
+        return getTransientTicketEvent(ticket, actor, TicketEventType.PRIORITY_CHANGED, Map.of(
+                "oldPriority", oldPriority.name(),
+                "newPriority", newPriority.name()
+        ));
+    }
+
+    public TicketEventEntity getTransientTicketStatusChangedEvent(TicketEntity ticket, UserEntity actor, TicketStatus oldStatus, TicketStatus newStatus) {
+        return getTransientTicketEvent(ticket, actor, TicketEventType.STATUS_CHANGED, Map.of(
+                "oldStatus", oldStatus.name(),
+                "newStatus", newStatus.name()
+        ));
+    }
+
+    public TicketEventEntity getTransientTicketCommentedEvent(TicketEntity ticket, UserEntity actor, TicketCommentEntity comment) {
+        return getTransientTicketEvent(ticket, actor, TicketEventType.COMMENTED, Map.of(
+                "commentId", comment.getId().toString()
+        ));
+    }
+
+    private static TicketEventEntity getTransientTicketEvent(TicketEntity ticket, UserEntity actor, TicketEventType eventType, Map<String, Object> payload) {
         return TicketEventEntity.builder()
                 .ticket(ticket)
                 .actor(actor)
