@@ -1,0 +1,1 @@
+TRUNCATE ticket_events, ticket_comments, tickets, users RESTART IDENTITY CASCADE;
