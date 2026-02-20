@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.util;
+package com.rolliedev.ticketflow.testsupport.util;
 
 import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEntity;

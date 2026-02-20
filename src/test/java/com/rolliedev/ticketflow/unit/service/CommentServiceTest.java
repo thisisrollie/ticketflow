@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.service;
+package com.rolliedev.ticketflow.unit.service;
 
 import com.rolliedev.ticketflow.dto.CommentResponse;
 import com.rolliedev.ticketflow.entity.TicketCommentEntity;
@@ -13,6 +13,8 @@ import com.rolliedev.ticketflow.mapper.CommentResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
+import com.rolliedev.ticketflow.service.CommentService;
+import com.rolliedev.ticketflow.service.TicketEventService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

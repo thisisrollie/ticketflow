@@ -1,8 +1,10 @@
-package com.rolliedev.ticketflow.integration.annotation;
+package com.rolliedev.ticketflow.testsupport.annotation;
 
 import com.rolliedev.ticketflow.config.AuditConfiguration;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -14,7 +16,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @ActiveProfiles("test")
-//@ImportAutoConfiguration(LiquibaseAutoConfiguration.class)
+@ImportAutoConfiguration(LiquibaseAutoConfiguration.class)
 @Import({AuditConfiguration.class})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @DataJpaTest

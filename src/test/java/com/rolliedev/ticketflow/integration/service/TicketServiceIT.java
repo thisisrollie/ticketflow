@@ -11,9 +11,9 @@ import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
-import com.rolliedev.ticketflow.integration.IntegrationTestBase;
 import com.rolliedev.ticketflow.service.TicketService;
-import com.rolliedev.ticketflow.util.DataUtils;
+import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
+import com.rolliedev.ticketflow.testsupport.util.DataUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.OptimisticLockException;
@@ -23,6 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.SqlMergeMode;
 
 import java.util.List;
 
@@ -30,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class TicketServiceIT extends IntegrationTestBase {
+class TicketServiceIT extends AbstractSpringBootIT {
 
     @Autowired
     private TicketService ticketService;
@@ -241,6 +243,8 @@ class TicketServiceIT extends IntegrationTestBase {
     }
 
     @Test
+    @SqlMergeMode(SqlMergeMode.MergeMode.MERGE)
+    @Sql(scripts = "classpath:sql/cleanup.sql", executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void shouldThrowOptimisticLockingExceptionWhenConcurrentUpdate() {
         Long ticketId = null;
 

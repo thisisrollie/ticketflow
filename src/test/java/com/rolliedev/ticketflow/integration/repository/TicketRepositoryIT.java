@@ -3,17 +3,10 @@ package com.rolliedev.ticketflow.integration.repository;
 import com.querydsl.core.types.Predicate;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.TicketEntity;
-import com.rolliedev.ticketflow.entity.UserEntity;
-import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.integration.annotation.JpaIT;
-import com.rolliedev.ticketflow.repository.TicketRepository;
-import com.rolliedev.ticketflow.repository.UserRepository;
-import com.rolliedev.ticketflow.util.DataUtils;
-import liquibase.integration.spring.SpringLiquibase;
-import lombok.RequiredArgsConstructor;
-import org.junit.jupiter.api.BeforeEach;
+import com.rolliedev.ticketflow.testsupport.base.AbstractJpaIT;
+import com.rolliedev.ticketflow.testsupport.util.DataUtils;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,32 +16,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@JpaIT
-@RequiredArgsConstructor
-class TicketRepositoryIT {
-
-    private final TicketRepository ticketRepo;
-    private final UserRepository userRepo;
-    private final SpringLiquibase liquibase;
-
-    private UserEntity customer;
-    private TicketEntity ticket1, ticket2, ticket3;
-
-    @BeforeEach
-    void setUp() {
-        customer = DataUtils.getTransientUser("Clark", "Kent", Role.CUSTOMER);
-        userRepo.saveAndFlush(customer);
-
-        ticket1 = DataUtils.getTransientTicket("Can't log in", "Getting error when logging in with Google", TicketStatus.IN_PROGRESS, TicketPriority.MEDIUM, customer, null);
-        ticket2 = DataUtils.getTransientTicket("Billing discrepancy", "Charged twice for last month", TicketStatus.NEW, TicketPriority.HIGH, customer, null);
-        ticket3 = DataUtils.getTransientTicket("Cannot upgrade my subscription", "I want to upgrade my subscription to premium", TicketStatus.NEW, TicketPriority.MEDIUM, customer, null);
-        ticketRepo.saveAllAndFlush(List.of(ticket1, ticket2, ticket3));
-    }
-
-    @Test
-    void checkIfLiquibaseIsEnabled() {
-        assertThat(liquibase).isNotNull();
-    }
+class TicketRepositoryIT extends AbstractJpaIT {
 
     @Test
     void shouldReturnFirstPageWhenFilteringByMultipleStatuses() {

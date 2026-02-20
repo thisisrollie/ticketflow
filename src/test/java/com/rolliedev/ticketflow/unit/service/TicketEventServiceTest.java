@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.service;
+package com.rolliedev.ticketflow.unit.service;
 
 import com.rolliedev.ticketflow.dto.TicketEventResponse;
 import com.rolliedev.ticketflow.entity.TicketEntity;
@@ -7,6 +7,7 @@ import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.mapper.TicketEventResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketEventRepository;
+import com.rolliedev.ticketflow.service.TicketEventService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
