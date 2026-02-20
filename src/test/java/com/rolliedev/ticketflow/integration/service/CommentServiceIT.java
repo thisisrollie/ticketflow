@@ -6,6 +6,7 @@ import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.exception.AccessDeniedException;
 import com.rolliedev.ticketflow.integration.IntegrationTestBase;
+import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.service.CommentService;
 import com.rolliedev.ticketflow.util.DataUtils;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,8 @@ class CommentServiceIT extends IntegrationTestBase {
 
     @Autowired
     private CommentService commentService;
+    @Autowired
+    private TicketCommentRepository commentRepo;
 
     @Test
     void shouldPersistCommentAndRecordEventSuccessfully() {
