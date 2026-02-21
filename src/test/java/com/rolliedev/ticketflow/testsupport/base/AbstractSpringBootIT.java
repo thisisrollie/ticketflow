@@ -1,23 +1,22 @@
-package com.rolliedev.ticketflow.integration;
+package com.rolliedev.ticketflow.testsupport.base;
 
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
-import com.rolliedev.ticketflow.integration.annotation.IT;
 import com.rolliedev.ticketflow.repository.TicketEventRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
+import com.rolliedev.ticketflow.testsupport.annotation.IT;
+import com.rolliedev.ticketflow.testsupport.container.AbstractPostgresContainerTest;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.jdbc.Sql;
-import org.springframework.test.context.jdbc.SqlGroup;
 
 @IT
-@SqlGroup({
-        @Sql(scripts = "classpath:sql/data.sql", executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD),
-        @Sql(scripts = "classpath:sql/cleanup.sql", executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+@Sql(scripts = {
+        "classpath:sql/data.sql"
 })
-public abstract class IntegrationTestBase {
+public abstract class AbstractSpringBootIT extends AbstractPostgresContainerTest {
 
     @Autowired
     protected UserRepository userRepo;

@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.service;
+package com.rolliedev.ticketflow.unit.service;
 
 import com.querydsl.core.types.Predicate;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
@@ -16,6 +16,8 @@ import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
+import com.rolliedev.ticketflow.service.TicketEventService;
+import com.rolliedev.ticketflow.service.TicketService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;

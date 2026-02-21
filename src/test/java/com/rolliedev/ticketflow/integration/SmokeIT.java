@@ -1,21 +1,18 @@
 package com.rolliedev.ticketflow.integration;
 
-import lombok.RequiredArgsConstructor;
+import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@ActiveProfiles("test")
-@SpringBootTest
-@RequiredArgsConstructor
-public class SmokeIT {
+public class SmokeIT extends AbstractSpringBootIT {
 
-    private final JdbcTemplate jdbcTemplate;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @ParameterizedTest
     @ValueSource(strings = {

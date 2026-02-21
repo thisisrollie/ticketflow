@@ -5,10 +5,10 @@ import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.exception.AccessDeniedException;
-import com.rolliedev.ticketflow.integration.IntegrationTestBase;
+import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
 import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.service.CommentService;
-import com.rolliedev.ticketflow.util.DataUtils;
+import com.rolliedev.ticketflow.testsupport.util.DataUtils;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
@@ -19,7 +19,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class CommentServiceIT extends IntegrationTestBase {
+class CommentServiceIT extends AbstractSpringBootIT {
 
     @Autowired
     private CommentService commentService;

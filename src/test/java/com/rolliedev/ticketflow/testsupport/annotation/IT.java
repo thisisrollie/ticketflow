@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.integration.annotation;
+package com.rolliedev.ticketflow.testsupport.annotation;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
