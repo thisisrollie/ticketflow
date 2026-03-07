@@ -1,6 +1,7 @@
 package com.rolliedev.ticketflow.unit.service;
 
 import com.querydsl.core.types.Predicate;
+import com.querydsl.core.types.dsl.Expressions;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
@@ -13,6 +14,7 @@ import com.rolliedev.ticketflow.exception.AccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
+import com.rolliedev.ticketflow.mapper.CreateTicketRequestMapper;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
@@ -41,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -73,61 +76,43 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
         TicketResponse expectedResponse = new TicketResponse(ticket.getId(), ticket.getTitle(), ticket.getDescription(), ticket.getStatus(), ticket.getPriority(), null, null, null, null, null);
-        doReturn(expectedResponse).when(ticketMapper).toDto(ticket);
+        doReturn(expectedResponse).when(ticketMapper).map(ticket);
 
-        Optional<TicketResponse> actualResult = ticketService.findTicket(TICKET_ID);
+        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID);
 
         assertThat(actualResult).isPresent();
         assertThat(actualResult.get().id()).isEqualTo(expectedResponse.id());
 
         verify(ticketRepository).findById(TICKET_ID);
-        verify(ticketMapper).toDto(ticket);
+        verify(ticketMapper).map(ticket);
     }
 
     @Test
     void shouldReturnEmptyOptionalWhenTicketNotFound() {
         doReturn(Optional.empty()).when(ticketRepository).findById(TICKET_ID);
 
-        Optional<TicketResponse> actualResult = ticketService.findTicket(TICKET_ID);
+        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID);
 
         assertThat(actualResult).isEmpty();
 
         verify(ticketRepository).findById(TICKET_ID);
-        verify(ticketMapper, never()).toDto(any(TicketEntity.class));
+        verify(ticketMapper, never()).map(any(TicketEntity.class));
     }
 
     @Test
-    void shouldCallFindAllWhenSearchFilterIsEmpty() {
+    void shouldFindAllSuccessfullyWhenSearchFilterIsEmpty() {
         TicketSearchFilter searchFilter = TicketSearchFilter.builder().build();
-        Pageable pageable = PageRequest.of(0, 10);
-        TicketEntity ticket = TicketEntity.builder()
-                .id(TICKET_ID)
-                .build();
-        doReturn(new PageImpl<>(List.of(ticket))).when(ticketRepository).findAll(pageable);
-
-        ticketService.listTickets(searchFilter, pageable);
-
-        verify(ticketRepository).findAll(pageable);
-        verify(ticketMapper).toDto(any(TicketEntity.class));
-        verify(ticketRepository, never()).findAll(any(Predicate.class), eq(pageable));
-    }
-
-    @Test
-    void shouldCallFindAllByPredicateWhenSearchFilterIsNotEmpty() {
-        TicketSearchFilter searchFilter = TicketSearchFilter.builder()
-                .creatorId(CUSTOMER_ID)
-                .build();
         Pageable pageable = PageRequest.of(0, 10);
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .build();
         doReturn(new PageImpl<>(List.of(ticket))).when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
 
-        ticketService.listTickets(searchFilter, pageable);
+        ticketService.findAll(searchFilter, pageable);
 
-        verify(ticketRepository).findAll(any(Predicate.class), eq(pageable));
-        verify(ticketMapper).toDto(ticket);
-        verify(ticketRepository, never()).findAll(pageable);
+        Predicate expectedPredicate = Expressions.asBoolean(true).isTrue();
+        verify(ticketRepository).findAll(eq(expectedPredicate), eq(pageable));
+        verify(ticketMapper).map(any(TicketEntity.class));
     }
 
     @Test
@@ -138,14 +123,17 @@ class TicketServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
         doReturn(new PageImpl<TicketEntity>(Collections.emptyList())).when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
 
-        ticketService.listTickets(searchFilter, pageable);
+        ticketService.findAll(searchFilter, pageable);
 
         verify(ticketRepository).findAll(any(Predicate.class), eq(pageable));
-        verify(ticketMapper, never()).toDto(any(TicketEntity.class));
+        verify(ticketMapper, never()).map(any(TicketEntity.class));
     }
 
     @Test
     void shouldCreateTicketAndRecordTicketEventSuccessfully() {
+        CreateTicketRequestMapper createTicketRequestMapper = new CreateTicketRequestMapper(userRepository);
+        ticketService = new TicketService(userRepository, ticketRepository, eventService, ticketMapper, createTicketRequestMapper);
+
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
                 "Getting error when logging in with Google",
@@ -159,11 +147,13 @@ class TicketServiceTest {
 
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
+                .createdBy(creator)
                 .build();
         ArgumentCaptor<TicketEntity> argumentCaptor = ArgumentCaptor.forClass(TicketEntity.class);
         doReturn(ticket).when(ticketRepository).save(argumentCaptor.capture());
+        doReturn(mock(TicketResponse.class)).when(ticketMapper).map(ticket);
 
-        ticketService.createTicket(createRequest);
+        ticketService.create(createRequest);
 
         assertThat(argumentCaptor.getValue().getTitle()).isEqualTo(createRequest.title());
         assertThat(argumentCaptor.getValue().getStatus()).isEqualTo(TicketStatus.NEW);
@@ -173,11 +163,14 @@ class TicketServiceTest {
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).save(argumentCaptor.capture());
         verify(eventService).recordCreatedEvent(ticket, creator);
-        verify(ticketMapper).toDto(ticket);
+        verify(ticketMapper).map(ticket);
     }
 
     @Test
     void shouldNotCreateTicketAndThrowExceptionWhenUserNotFound() {
+        CreateTicketRequestMapper createTicketRequestMapper = new CreateTicketRequestMapper(userRepository);
+        ticketService = new TicketService(userRepository, ticketRepository, eventService, ticketMapper, createTicketRequestMapper);
+
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
                 "Getting error when logging in with Google",
@@ -185,7 +178,7 @@ class TicketServiceTest {
         );
         doReturn(Optional.empty()).when(userRepository).findById(CUSTOMER_ID);
 
-        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> ticketService.createTicket(createRequest));
+        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> ticketService.create(createRequest));
 
         assertThat(actualException).hasMessage(ResourceNotFoundException.user(CUSTOMER_ID).getMessage());
 
@@ -214,7 +207,7 @@ class TicketServiceTest {
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         // when
-        ticketService.assignTicket(ticket.getId(), admin.getId(), agent.getId());
+        ticketService.assign(ticket.getId(), admin.getId(), agent.getId());
 
         // then
         assertThat(ticket.getAssignedTo()).isEqualTo(agent);
@@ -230,7 +223,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assignTicket(TICKET_ID, customer.getId(), AGENT_ID));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assign(TICKET_ID, customer.getId(), AGENT_ID));
 
         assertThat(actualException).hasMessage("Only agents or admins can assign tickets");
 
@@ -252,7 +245,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assignTicket(TICKET_ID, admin.getId(), customer.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assign(TICKET_ID, admin.getId(), customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can be assigned to tickets");
 
@@ -280,7 +273,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(closedTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> ticketService.assignTicket(closedTicket.getId(), admin.getId(), agent.getId()));
+        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> ticketService.assign(closedTicket.getId(), admin.getId(), agent.getId()));
 
         assertThat(actualException).hasMessage("Closed tickets cannot be assigned");
         assertThat(closedTicket.getAssignedTo()).isNull();
@@ -311,7 +304,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(newTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.assignTicket(newTicket.getId(), admin.getId(), agent.getId());
+        ticketService.assign(newTicket.getId(), admin.getId(), agent.getId());
 
         verify(userRepository, times(2)).findById(Mockito.anyInt());
         verify(ticketRepository).findById(TICKET_ID);
@@ -334,7 +327,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.startProgressOnTicket(ticket.getId(), agent.getId());
+        ticketService.startProgress(ticket.getId(), agent.getId());
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         if (currentStatus == TicketStatus.RESOLVED) {
@@ -354,7 +347,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgressOnTicket(TICKET_ID, customer.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgress(TICKET_ID, customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can start progress on tickets");
 
@@ -379,7 +372,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgressOnTicket(ticket.getId(), admin.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgress(ticket.getId(), admin.getId()));
 
         assertThat(actualException).hasMessage("Only the ticket assignee can start progress on the ticket");
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.NEW);
@@ -405,7 +398,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.startProgressOnTicket(ticket.getId(), agent.getId()));
+        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.startProgress(ticket.getId(), agent.getId()));
 
         String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.IN_PROGRESS).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);
@@ -496,7 +489,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.resolveTicket(ticket.getId(), agent.getId());
+        ticketService.resolve(ticket.getId(), agent.getId());
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(ticket.getResolvedAt()).isNotNull();
@@ -514,7 +507,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.resolveTicket(TICKET_ID, customer.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.resolve(TICKET_ID, customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can resolve tickets");
 
@@ -537,7 +530,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.resolveTicket(ticket.getId(), agent.getId()));
+        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.resolve(ticket.getId(), agent.getId()));
 
         String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.RESOLVED).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);
@@ -564,7 +557,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.closeTicketByCustomer(ticket.getId(), customer.getId());
+        ticketService.closeByCustomer(ticket.getId(), customer.getId());
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.CLOSED);
 
@@ -581,7 +574,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeTicketByCustomer(TICKET_ID, agent.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeByCustomer(TICKET_ID, agent.getId()));
 
         assertThat(actualException).hasMessage("Only customers can manually close tickets");
 
@@ -606,7 +599,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeTicketByCustomer(ticket.getId(), customer.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
 
         assertThat(actualException).hasMessage("Only the ticket creator can close tickets");
 
@@ -631,7 +624,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.closeTicketByCustomer(ticket.getId(), customer.getId()));
+        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
 
         String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.CLOSED).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);

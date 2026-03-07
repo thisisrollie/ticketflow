@@ -47,7 +47,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
                 .build();
         PageRequest pageable = PageRequest.of(0, 10);
 
-        Page<TicketResponse> actualPage = ticketService.listTickets(searchFilter, pageable);
+        Page<TicketResponse> actualPage = ticketService.findAll(searchFilter, pageable);
 
         assertThat(actualPage.getContent()).hasSize(1);
         assertThat(actualPage.getContent()).allSatisfy(ticket -> {
@@ -64,7 +64,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
                 .build();
         PageRequest pageable = PageRequest.of(0, 10);
 
-        Page<TicketResponse> actualPage = ticketService.listTickets(searchFilter, pageable);
+        Page<TicketResponse> actualPage = ticketService.findAll(searchFilter, pageable);
 
         assertThat(actualPage.getContent()).isEmpty();
     }
@@ -74,7 +74,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         TicketSearchFilter emptyFilter = TicketSearchFilter.builder().build();
         PageRequest pageable = PageRequest.of(0, 10);
 
-        Page<TicketResponse> actualPage = ticketService.listTickets(emptyFilter, pageable);
+        Page<TicketResponse> actualPage = ticketService.findAll(emptyFilter, pageable);
 
         assertThat(actualPage.getContent()).hasSize(3);
     }
@@ -83,7 +83,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     void shouldCreateTicketAndRecordTicketEventSuccessfully() {
         CreateTicketRequest createRequest = new CreateTicketRequest("dummy_title", "dummy_description", customer.getId());
 
-        TicketResponse actualResult = ticketService.createTicket(createRequest);
+        TicketResponse actualResult = ticketService.create(createRequest);
 
         List<TicketEntity> allTickets = ticketRepo.findAll();
         assertThat(allTickets).hasSize(4);
@@ -102,7 +102,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldAssignTicketToAgentSuccessfully() {
-        ticketService.assignTicket(ticket2.getId(), agent.getId(), agent.getId());
+        ticketService.assign(ticket2.getId(), agent.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket2.getId()).orElseThrow();
@@ -122,7 +122,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         UserEntity anotherAgent = DataUtils.getTransientUser("Oliver", "Queen", Role.AGENT);
         userRepo.saveAndFlush(anotherAgent);
 
-        ticketService.assignTicket(ticket1.getId(), agent.getId(), anotherAgent.getId());
+        ticketService.assign(ticket1.getId(), agent.getId(), anotherAgent.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
@@ -137,7 +137,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldDoNothingWhenAssigningTicketToTheSameAgent() {
-        ticketService.assignTicket(ticket1.getId(), agent.getId(), agent.getId());
+        ticketService.assign(ticket1.getId(), agent.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
@@ -149,7 +149,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldStartProgressOnUnassignedTicketSuccessfully() {
-        ticketService.startProgressOnTicket(ticket2.getId(), agent.getId());
+        ticketService.startProgress(ticket2.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket2.getId()).orElseThrow();
@@ -182,7 +182,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     void shouldSetResolvedAtWhenTicketStatusChangedToResolved() {
         assertNull(ticket1.getResolvedAt());
 
-        ticketService.resolveTicket(ticket1.getId(), agent.getId());
+        ticketService.resolve(ticket1.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
@@ -195,7 +195,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         ticketRepo.saveAndFlush(newTicket);
 
         InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> {
-            ticketService.resolveTicket(newTicket.getId(), agent.getId());
+            ticketService.resolve(newTicket.getId(), agent.getId());
         });
 
         assertThat(actualException).hasMessage(new InvalidStatusTransitionException(TicketStatus.NEW, TicketStatus.RESOLVED).getMessage());
@@ -205,7 +205,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     void shouldCloseTicketSuccessfully() {
         ticket1.setStatus(TicketStatus.RESOLVED);
 
-        ticketService.closeTicketByCustomer(ticket1.getId(), customer.getId());
+        ticketService.closeByCustomer(ticket1.getId(), customer.getId());
         flushAndClear();
 
         TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
@@ -221,7 +221,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         final TicketStatus currentTicketStatus = ticket1.getStatus();
 
         InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> {
-            ticketService.closeTicketByCustomer(ticket1.getId(), customer.getId());
+            ticketService.closeByCustomer(ticket1.getId(), customer.getId());
         });
 
         assertThat(actualException).hasMessage(new InvalidStatusTransitionException(currentTicketStatus, TicketStatus.CLOSED).getMessage());

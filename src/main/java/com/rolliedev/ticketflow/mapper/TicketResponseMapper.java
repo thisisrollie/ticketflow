@@ -12,18 +12,18 @@ public class TicketResponseMapper implements Mapper<TicketEntity, TicketResponse
     private final UserResponseMapper userResponseMapper;
 
     @Override
-    public TicketResponse toDto(TicketEntity entity) {
+    public TicketResponse map(TicketEntity object) {
         return new TicketResponse(
-                entity.getId(),
-                entity.getTitle(),
-                entity.getDescription(),
-                entity.getStatus(),
-                entity.getPriority(),
-                userResponseMapper.toDto(entity.getCreatedBy()),
-                entity.getAssignedTo() != null ? userResponseMapper.toDto(entity.getAssignedTo()) : null,
-                entity.getCreatedAt(),
-                entity.getModifiedAt(),
-                entity.getResolvedAt()
+                object.getId(),
+                object.getTitle(),
+                object.getDescription(),
+                object.getStatus(),
+                object.getPriority(),
+                userResponseMapper.map(object.getCreatedBy()),
+                object.getAssignedTo() != null ? userResponseMapper.map(object.getAssignedTo()) : null,
+                object.getCreatedAt(),
+                object.getModifiedAt(),
+                object.getResolvedAt()
         );
     }
 }

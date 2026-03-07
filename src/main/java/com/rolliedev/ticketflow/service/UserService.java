@@ -2,7 +2,7 @@ package com.rolliedev.ticketflow.service;
 
 import com.rolliedev.ticketflow.dto.CreateUserRequest;
 import com.rolliedev.ticketflow.dto.UserResponse;
-import com.rolliedev.ticketflow.entity.UserEntity;
+import com.rolliedev.ticketflow.mapper.CreateUserRequestMapper;
 import com.rolliedev.ticketflow.mapper.UserResponseMapper;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,22 +17,20 @@ import java.util.Optional;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final UserResponseMapper userMapper;
+    private final UserResponseMapper userResponseMapper;
+    private final CreateUserRequestMapper createUserRequestMapper;
 
-    public Optional<UserResponse> findUser(Integer userId) {
-        return userRepository.findById(userId)
-                .map(userMapper::toDto);
+    public Optional<UserResponse> findById(Integer id) {
+        return userRepository.findById(id)
+                .map(userResponseMapper::map);
     }
 
     @Transactional
-    public UserResponse createUser(CreateUserRequest userDto) {
-        UserEntity user = UserEntity.builder()
-                .fullName(userDto.firstName() + " " + userDto.lastName())
-                .email(userDto.email())
-                .role(userDto.role())
-                .build();
-
-        UserEntity savedUser = userRepository.save(user);
-        return userMapper.toDto(savedUser);
+    public UserResponse create(CreateUserRequest userDto) {
+        return Optional.of(userDto)
+                .map(createUserRequestMapper::map)
+                .map(userRepository::save)
+                .map(userResponseMapper::map)
+                .orElseThrow();
     }
 }

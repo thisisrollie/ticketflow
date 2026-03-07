@@ -81,7 +81,7 @@ class CommentServiceTest {
         ArgumentCaptor<TicketCommentEntity> argumentCaptor = ArgumentCaptor.forClass(TicketCommentEntity.class);
         doReturn(comment).when(commentRepository).save(argumentCaptor.capture());
 
-        commentService.addComment(ticket.getId(), agent.getId(), COMMENT_TEXT);
+        commentService.create(ticket.getId(), agent.getId(), COMMENT_TEXT);
 
         assertThat(argumentCaptor.getValue().getTicket()).isEqualTo(ticket);
         assertThat(argumentCaptor.getValue().getAuthor()).isEqualTo(agent);
@@ -91,7 +91,7 @@ class CommentServiceTest {
         verify(userRepository).findById(AGENT_ID);
         verify(commentRepository).save(argumentCaptor.capture());
         verify(eventService).recordCommentedEvent(ticket, agent, comment.getId());
-        verify(commentMapper).toDto(comment);
+        verify(commentMapper).map(comment);
     }
 
     @Test
@@ -102,7 +102,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.addComment(ticket.getId(), AGENT_ID, COMMENT_TEXT));
+        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.create(ticket.getId(), AGENT_ID, COMMENT_TEXT));
 
         assertThat(actualException).hasMessage("Closed tickets cannot be modified");
 
@@ -114,7 +114,7 @@ class CommentServiceTest {
     void shouldThrowExceptionWhenTryingToAddCommentToTicketWithInvalidId() {
         doReturn(Optional.empty()).when(ticketRepository).findById(TICKET_ID);
 
-        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> commentService.addComment(TICKET_ID, AGENT_ID, COMMENT_TEXT));
+        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> commentService.create(TICKET_ID, AGENT_ID, COMMENT_TEXT));
 
         assertThat(actualException).hasMessage(ResourceNotFoundException.ticket(TICKET_ID).getMessage());
 
@@ -140,7 +140,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.addComment(ticket.getId(), customer.getId(), COMMENT_TEXT));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT));
 
         assertThat(actualException).hasMessage("Customers cannot add comments to tickets they did not create");
 
@@ -170,7 +170,7 @@ class CommentServiceTest {
                 .build();
         doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
 
-        commentService.addComment(ticket.getId(), customer.getId(), COMMENT_TEXT);
+        commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
 
@@ -179,7 +179,7 @@ class CommentServiceTest {
         verify(commentRepository).save(any(TicketCommentEntity.class));
         verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
         verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.WAITING_CUSTOMER, TicketStatus.IN_PROGRESS);
-        verify(commentMapper).toDto(comment);
+        verify(commentMapper).map(comment);
     }
 
     @Test
@@ -204,7 +204,7 @@ class CommentServiceTest {
                 .build();
         doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
 
-        commentService.addComment(ticket.getId(), customer.getId(), COMMENT_TEXT);
+        commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(ticket.getResolvedAt()).isNull();
@@ -214,7 +214,7 @@ class CommentServiceTest {
         verify(commentRepository).save(any(TicketCommentEntity.class));
         verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
         verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.RESOLVED, TicketStatus.IN_PROGRESS);
-        verify(commentMapper).toDto(comment);
+        verify(commentMapper).map(comment);
     }
 
     @ParameterizedTest
@@ -238,13 +238,13 @@ class CommentServiceTest {
                 .build();
         doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
 
-        commentService.addComment(ticket.getId(), customer.getId(), COMMENT_TEXT);
+        commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
 
         verify(ticketRepository).findById(TICKET_ID);
         verify(userRepository).findById(CUSTOMER_ID);
         verify(commentRepository).save(any(TicketCommentEntity.class));
         verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
-        verify(commentMapper).toDto(comment);
+        verify(commentMapper).map(comment);
         verifyNoMoreInteractions(eventService);
     }
 
@@ -267,7 +267,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(comment)).when(commentRepository).findWithTicketById(COMMENT_ID);
 
-        commentService.deleteComment(ticket.getId(), comment.getId(), customer.getId());
+        commentService.delete(ticket.getId(), comment.getId(), customer.getId());
 
         verify(commentRepository).findWithTicketById(COMMENT_ID);
         verify(userRepository).findById(CUSTOMER_ID);
@@ -279,7 +279,7 @@ class CommentServiceTest {
     void shouldThrowExceptionIfCommentWithGivenIdDoesNotExist() {
         doReturn(Optional.empty()).when(commentRepository).findWithTicketById(COMMENT_ID);
 
-        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> commentService.deleteComment(TICKET_ID, COMMENT_ID, CUSTOMER_ID));
+        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> commentService.delete(TICKET_ID, COMMENT_ID, CUSTOMER_ID));
 
         assertThat(actualException).hasMessage(ResourceNotFoundException.comment(COMMENT_ID).getMessage());
 
@@ -302,7 +302,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(comment)).when(commentRepository).findWithTicketById(COMMENT_ID);
 
-        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.deleteComment(anotherTicket.getId(), comment.getId(), CUSTOMER_ID));
+        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.delete(anotherTicket.getId(), comment.getId(), CUSTOMER_ID));
 
         assertThat(actualException).hasMessage("Comment does not belong to the given ticket");
 
@@ -323,7 +323,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(comment)).when(commentRepository).findWithTicketById(COMMENT_ID);
 
-        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.deleteComment(ticket.getId(), comment.getId(), CUSTOMER_ID));
+        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> commentService.delete(ticket.getId(), comment.getId(), CUSTOMER_ID));
 
         assertThat(actualException).hasMessage("Closed tickets cannot be modified");
 
@@ -352,7 +352,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.deleteComment(ticket.getId(), comment.getId(), agent.getId()));
+        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.delete(ticket.getId(), comment.getId(), agent.getId()));
 
         assertThat(actualException).hasMessage("Only admins or the comment author can delete a comment");
 
@@ -372,23 +372,23 @@ class CommentServiceTest {
         doReturn(comments).when(commentRepository).findAllByTicketIdOrderByCreatedAtAsc(TICKET_ID);
         comments.forEach(commentEntity -> {
             CommentResponse dto = new CommentResponse(commentEntity.getId(), null, commentEntity.getBody(), commentEntity.getCreatedAt());
-            doReturn(dto).when(commentMapper).toDto(commentEntity);
+            doReturn(dto).when(commentMapper).map(commentEntity);
         });
 
-        List<CommentResponse> actualResult = commentService.getComments(TICKET_ID);
+        List<CommentResponse> actualResult = commentService.findAllBy(TICKET_ID);
 
         assertThat(actualResult).hasSize(3);
         assertThat(actualResult).extracting(CommentResponse::id).contains(1L, 2L, 3L);
 
         verify(commentRepository).findAllByTicketIdOrderByCreatedAtAsc(TICKET_ID);
-        verify(commentMapper, times(comments.size())).toDto(any(TicketCommentEntity.class));
+        verify(commentMapper, times(comments.size())).map(any(TicketCommentEntity.class));
     }
 
     @Test
     void shouldReturnEmptyListWhenTicketHasNoComments() {
         doReturn(Collections.EMPTY_LIST).when(commentRepository).findAllByTicketIdOrderByCreatedAtAsc(TICKET_ID);
 
-        List<CommentResponse> actualResult = commentService.getComments(TICKET_ID);
+        List<CommentResponse> actualResult = commentService.findAllBy(TICKET_ID);
 
         assertThat(actualResult).isEmpty();
 

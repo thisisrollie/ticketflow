@@ -9,13 +9,13 @@ import org.springframework.stereotype.Component;
 public class TicketEventResponseMapper implements Mapper<TicketEventEntity, TicketEventResponse> {
 
     @Override
-    public TicketEventResponse toDto(TicketEventEntity entity) {
+    public TicketEventResponse map(TicketEventEntity object) {
         return new TicketEventResponse(
-                entity.getId(),
-                new UserSummary(entity.getActor().getId(), entity.getActor().getFullName()),
-                entity.getEventType(),
-                entity.getPayload(),
-                entity.getCreatedAt()
+                object.getId(),
+                new UserSummary(object.getActor().getId(), object.getActor().getFullName()),
+                object.getEventType(),
+                object.getPayload(),
+                object.getCreatedAt()
         );
     }
 }

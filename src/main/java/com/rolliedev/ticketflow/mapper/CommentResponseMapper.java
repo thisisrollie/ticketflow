@@ -9,12 +9,12 @@ import org.springframework.stereotype.Component;
 public class CommentResponseMapper implements Mapper<TicketCommentEntity, CommentResponse> {
 
     @Override
-    public CommentResponse toDto(TicketCommentEntity entity) {
+    public CommentResponse map(TicketCommentEntity object) {
         return new CommentResponse(
-                entity.getId(),
-                new UserSummary(entity.getAuthor().getId(), entity.getAuthor().getFullName()),
-                entity.getBody(),
-                entity.getCreatedAt()
+                object.getId(),
+                new UserSummary(object.getAuthor().getId(), object.getAuthor().getFullName()),
+                object.getBody(),
+                object.getCreatedAt()
         );
     }
 }

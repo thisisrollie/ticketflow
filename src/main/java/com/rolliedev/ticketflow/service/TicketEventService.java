@@ -29,7 +29,7 @@ public class TicketEventService {
 
     public List<TicketEventResponse> getTimeline(Long ticketId) {
         return eventRepository.findAllByTicketId(ticketId, Sort.by("createdAt", "id").descending()).stream()
-                .map(eventMapper::toDto)
+                .map(eventMapper::map)
                 .toList();
     }
 
