@@ -28,7 +28,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldPersistCommentAndRecordEventSuccessfully() {
-        commentService.addComment(ticket2.getId(), customer.getId(), "This is a comment");
+        commentService.create(ticket2.getId(), customer.getId(), "This is a comment");
 
         List<TicketCommentEntity> ticketComments = commentRepo.findAllByTicketId(ticket2.getId());
         assertThat(ticketComments).hasSize(1);
@@ -44,7 +44,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
         TicketCommentEntity comment = DataUtils.getTransientTicketComment(ticket2, customer, "This is a comment");
         commentRepo.saveAndFlush(comment);
 
-        commentService.deleteComment(ticket2.getId(), comment.getId(), customer.getId());
+        commentService.delete(ticket2.getId(), comment.getId(), customer.getId());
         flushAndClear();
 
         Optional<TicketCommentEntity> maybeComment = commentRepo.findById(comment.getId());
@@ -56,7 +56,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
         TicketCommentEntity comment = DataUtils.getTransientTicketComment(ticket2, customer, "This is a comment");
         commentRepo.saveAndFlush(comment);
 
-        commentService.deleteComment(ticket2.getId(), comment.getId(), admin.getId());
+        commentService.delete(ticket2.getId(), comment.getId(), admin.getId());
         flushAndClear();
 
         Optional<TicketCommentEntity> maybeComment = commentRepo.findById(comment.getId());
@@ -69,7 +69,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
         commentRepo.saveAndFlush(comment);
 
         AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> {
-            commentService.deleteComment(ticket2.getId(), comment.getId(), agent.getId());
+            commentService.delete(ticket2.getId(), comment.getId(), agent.getId());
         });
 
         assertThat(actualException).hasMessage("Only admins or the comment author can delete a comment");
@@ -82,14 +82,14 @@ class CommentServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldReturnAllCommentsOnGivenTicketSuccessfully() {
-        List<CommentResponse> actualResult = commentService.getComments(ticket1.getId());
+        List<CommentResponse> actualResult = commentService.findAllBy(ticket1.getId());
 
         assertThat(actualResult).hasSize(2);
     }
 
     @Test
     void shouldReturnEmptyListWhenTicketHasNoComments() {
-        List<CommentResponse> actualResult = commentService.getComments(ticket2.getId());
+        List<CommentResponse> actualResult = commentService.findAllBy(ticket2.getId());
 
         assertThat(actualResult).isEmpty();
     }

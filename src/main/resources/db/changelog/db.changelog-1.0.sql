@@ -34,10 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to_id ON tickets (assigned_to_id
 CREATE TABLE ticket_comments
 (
     id         BIGSERIAL PRIMARY KEY,
-    ticket_id  BIGINT REFERENCES tickets (id) NOT NULL,
-    author_id  INT REFERENCES users (id)      NOT NULL,
-    body       TEXT                           NOT NULL,
-    created_at TIMESTAMPTZ                    NOT NULL
+    ticket_id  BIGINT REFERENCES tickets (id) ON DELETE CASCADE NOT NULL,
+    author_id  INT REFERENCES users (id)                        NOT NULL,
+    body       TEXT                                             NOT NULL,
+    created_at TIMESTAMPTZ                                      NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket_id ON ticket_comments (ticket_id);
 
@@ -45,10 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket_id ON ticket_comments (tic
 CREATE TABLE ticket_events
 (
     id         BIGSERIAL PRIMARY KEY,
-    ticket_id  BIGINT REFERENCES tickets (id) NOT NULL,
-    actor_id   INT REFERENCES users (id)      NOT NULL,
-    event_type VARCHAR(32)                    NOT NULL,
-    payload    JSONB                          NOT NULL,
-    created_at TIMESTAMPTZ                    NOT NULL
+    ticket_id  BIGINT REFERENCES tickets (id) ON DELETE CASCADE NOT NULL,
+    actor_id   INT REFERENCES users (id)                        NOT NULL,
+    event_type VARCHAR(32)                                      NOT NULL,
+    payload    JSONB                                            NOT NULL,
+    created_at TIMESTAMPTZ                                      NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket_id ON ticket_events (ticket_id);

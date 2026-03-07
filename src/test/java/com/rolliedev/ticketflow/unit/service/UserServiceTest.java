@@ -4,6 +4,7 @@ import com.rolliedev.ticketflow.dto.CreateUserRequest;
 import com.rolliedev.ticketflow.dto.UserResponse;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
+import com.rolliedev.ticketflow.mapper.CreateUserRequestMapper;
 import com.rolliedev.ticketflow.mapper.UserResponseMapper;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import com.rolliedev.ticketflow.service.UserService;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
@@ -31,6 +33,8 @@ class UserServiceTest {
     private UserRepository userRepository;
     @Mock
     private UserResponseMapper userMapper;
+    @Spy
+    private CreateUserRequestMapper createUserRequestMapper;
     @InjectMocks
     private UserService userService;
 
@@ -41,44 +45,46 @@ class UserServiceTest {
                 .build();
         doReturn(Optional.of(user)).when(userRepository).findById(USER_ID);
         UserResponse userDto = new UserResponse(user.getId(), user.getFullName(), user.getEmail(), user.getRole(), user.getCreatedAt());
-        doReturn(userDto).when(userMapper).toDto(user);
+        doReturn(userDto).when(userMapper).map(user);
 
-        Optional<UserResponse> actualResult = userService.findUser(USER_ID);
+        Optional<UserResponse> actualResult = userService.findById(USER_ID);
 
         assertThat(actualResult).isPresent();
         assertThat(actualResult.get().id()).isEqualTo(user.getId());
         verify(userRepository).findById(USER_ID);
-        verify(userMapper).toDto(user);
+        verify(userMapper).map(user);
     }
 
     @Test
     void shouldReturnEmptyOptionalWhenUserNotFound() {
         doReturn(Optional.empty()).when(userRepository).findById(USER_ID);
 
-        Optional<UserResponse> actualResult = userService.findUser(USER_ID);
+        Optional<UserResponse> actualResult = userService.findById(USER_ID);
 
         assertThat(actualResult).isEmpty();
         verify(userRepository).findById(USER_ID);
-        verify(userMapper, never()).toDto(any(UserEntity.class));
+        verify(userMapper, never()).map(any(UserEntity.class));
     }
 
     @Test
     void shouldCreateUserSuccessfully() {
         CreateUserRequest createRequest = new CreateUserRequest("Clark", "Kent", "test@gmail.com", Role.CUSTOMER);
 
-        ArgumentCaptor<UserEntity> argumentCaptor = ArgumentCaptor.forClass(UserEntity.class);
         UserEntity userEntity = UserEntity.builder().id(USER_ID).build();
+        ArgumentCaptor<UserEntity> argumentCaptor = ArgumentCaptor.forClass(UserEntity.class);
         doReturn(userEntity).when(userRepository).save(argumentCaptor.capture());
-        UserResponse userDto = new UserResponse(userEntity.getId(), userEntity.getFullName(), userEntity.getEmail(), userEntity.getRole(), userEntity.getCreatedAt());
-        doReturn(userDto).when(userMapper).toDto(userEntity);
 
-        UserResponse actualResult = userService.createUser(createRequest);
+        UserResponse userDto = new UserResponse(userEntity.getId(), userEntity.getFullName(), userEntity.getEmail(), userEntity.getRole(), userEntity.getCreatedAt());
+        doReturn(userDto).when(userMapper).map(userEntity);
+
+        UserResponse actualResult = userService.create(createRequest);
 
         assertThat(actualResult).isNotNull();
         assertThat(actualResult).isEqualTo(userDto);
         assertThat(argumentCaptor.getValue().getFullName()).isEqualTo(createRequest.firstName() + " " + createRequest.lastName());
 
+        verify(createUserRequestMapper).map(createRequest);
         verify(userRepository).save(any(UserEntity.class));
-        verify(userMapper).toDto(userEntity);
+        verify(userMapper).map(userEntity);
     }
 }

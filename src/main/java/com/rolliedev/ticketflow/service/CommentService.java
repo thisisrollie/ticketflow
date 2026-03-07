@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -31,13 +32,13 @@ public class CommentService {
     private final CommentResponseMapper commentMapper;
 
     @Transactional
-    public CommentResponse addComment(Long ticketId, Integer authorId, String text) {
-        TicketEntity ticket = getTicketOrThrow(ticketId);
+    public CommentResponse create(Long ticketId, Integer authorId, String text) {
+        TicketEntity ticket = getTicket(ticketId);
         if (ticket.getStatus() == TicketStatus.CLOSED) {
             throw new BusinessRuleViolationException("Closed tickets cannot be modified");
         }
 
-        UserEntity author = getUserOrThrow(authorId);
+        UserEntity author = getUser(authorId);
         if (author.getRole() == Role.CUSTOMER && !ticket.getCreatedBy().getId().equals(author.getId())) {
             throw new AccessDeniedException("Customers cannot add comments to tickets they did not create");
         }
@@ -61,11 +62,11 @@ public class CommentService {
                 eventService.recordStatusChangedEvent(ticket, author, currentStatus, TicketStatus.IN_PROGRESS);
             }
         }
-        return commentMapper.toDto(savedComment);
+        return commentMapper.map(savedComment);
     }
 
     @Transactional
-    public void deleteComment(Long ticketId, Long commentId, Integer actorId) {
+    public void delete(Long ticketId, Long commentId, Integer actorId) {
         TicketCommentEntity comment = commentRepository.findWithTicketById(commentId)
                 .orElseThrow(() -> ResourceNotFoundException.comment(commentId));
         if (!comment.getTicket().getId().equals(ticketId)) {
@@ -77,7 +78,7 @@ public class CommentService {
             throw new BusinessRuleViolationException("Closed tickets cannot be modified");
         }
 
-        UserEntity actor = getUserOrThrow(actorId);
+        UserEntity actor = getUser(actorId);
         boolean isAdmin = actor.getRole() == Role.ADMIN;
         boolean isAuthor = comment.getAuthor().getId().equals(actor.getId());
 
@@ -86,23 +87,26 @@ public class CommentService {
         }
 
         commentRepository.delete(comment);
+        commentRepository.flush();
 
         eventService.recordCommentDeletedEvent(ticket, actor, commentId);
     }
 
-    public List<CommentResponse> getComments(Long ticketId) {
+    public List<CommentResponse> findAllBy(Long ticketId) {
         return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId).stream()
-                .map(commentMapper::toDto)
+                .map(commentMapper::map)
                 .toList();
     }
 
-    private TicketEntity getTicketOrThrow(Long ticketId) {
-        return ticketRepository.findById(ticketId)
+    private TicketEntity getTicket(Long ticketId) {
+        return Optional.of(ticketId)
+                .flatMap(ticketRepository::findById)
                 .orElseThrow(() -> ResourceNotFoundException.ticket(ticketId));
     }
 
-    private UserEntity getUserOrThrow(Integer userId) {
-        return userRepository.findById(userId)
+    private UserEntity getUser(Integer userId) {
+        return Optional.of(userId)
+                .flatMap(userRepository::findById)
                 .orElseThrow(() -> ResourceNotFoundException.user(userId));
     }
 }

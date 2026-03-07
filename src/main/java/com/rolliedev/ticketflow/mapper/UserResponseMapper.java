@@ -8,13 +8,13 @@ import org.springframework.stereotype.Component;
 public class UserResponseMapper implements Mapper<UserEntity, UserResponse> {
 
     @Override
-    public UserResponse toDto(UserEntity entity) {
+    public UserResponse map(UserEntity object) {
         return new UserResponse(
-                entity.getId(),
-                entity.getFullName(),
-                entity.getEmail(),
-                entity.getRole(),
-                entity.getCreatedAt()
+                object.getId(),
+                object.getFullName(),
+                object.getEmail(),
+                object.getRole(),
+                object.getCreatedAt()
         );
     }
 }

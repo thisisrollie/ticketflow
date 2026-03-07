@@ -50,14 +50,14 @@ class TicketEventServiceTest {
         doReturn(ticketEvents).when(eventRepository).findAllByTicketId(eq(TICKET_ID), any(Sort.class));
         ticketEvents.forEach(entity -> {
             TicketEventResponse dto = new TicketEventResponse(entity.getId(), null, entity.getEventType(), entity.getPayload(), entity.getCreatedAt());
-            doReturn(dto).when(eventMapper).toDto(entity);
+            doReturn(dto).when(eventMapper).map(entity);
         });
 
         List<TicketEventResponse> actualResult = eventService.getTimeline(TICKET_ID);
 
         assertThat(actualResult).hasSize(ticketEvents.size());
         verify(eventRepository).findAllByTicketId(eq(TICKET_ID), any(Sort.class));
-        verify(eventMapper, times(ticketEvents.size())).toDto(any());
+        verify(eventMapper, times(ticketEvents.size())).map(any());
     }
 
     @Test
@@ -68,7 +68,7 @@ class TicketEventServiceTest {
 
         assertThat(actualResult).isEmpty();
         verify(eventRepository).findAllByTicketId(eq(TICKET_ID), any(Sort.class));
-        verify(eventMapper, never()).toDto(any(TicketEventEntity.class));
+        verify(eventMapper, never()).map(any(TicketEventEntity.class));
     }
 
     @Test
