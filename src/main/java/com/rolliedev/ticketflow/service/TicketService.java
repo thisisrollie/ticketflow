@@ -36,7 +36,6 @@ public class TicketService {
     private final TicketResponseMapper ticketResponseMapper;
     private final CreateTicketRequestMapper createTicketRequestMapper;
 
-
     public Page<TicketResponse> findAll(TicketSearchFilter filter, Pageable pageable) {
         Predicate predicate = TicketSearchFilter.buildPredicate(filter);
         return ticketRepository.findAll(predicate, pageable)
@@ -95,15 +94,21 @@ public class TicketService {
         }
 
         TicketEntity ticket = getTicket(ticketId);
-        TicketStatus currentStatus = ticket.getStatus();
 
+        // if the ticket is not assigned to anyone, assign it to the actor who started the progress
         if (ticket.getAssignedTo() == null) {
             ticket.setAssignedTo(actor);
             eventService.recordAssignedEvent(ticket, actor, null, actor);
         }
 
-        if (!ticket.getAssignedTo().getId().equals(actor.getId())) {
+        UserEntity assignee = ticket.getAssignedTo();
+        if (!assignee.getId().equals(actor.getId())) {
             throw new AccessDeniedException("Only the ticket assignee can start progress on the ticket");
+        }
+
+        TicketStatus currentStatus = ticket.getStatus();
+        if (currentStatus == TicketStatus.IN_PROGRESS) {
+            return;
         }
 
         currentStatus.assertCanTransitionTo(TicketStatus.IN_PROGRESS);
@@ -111,8 +116,8 @@ public class TicketService {
         if (currentStatus == TicketStatus.RESOLVED) {
             ticket.setResolvedAt(null);
         }
-        ticket.setStatus(TicketStatus.IN_PROGRESS);
 
+        ticket.setStatus(TicketStatus.IN_PROGRESS);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.IN_PROGRESS);
     }
 
@@ -125,9 +130,13 @@ public class TicketService {
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
-        currentStatus.assertCanTransitionTo(TicketStatus.WAITING_CUSTOMER);
-        ticket.setStatus(TicketStatus.WAITING_CUSTOMER);
+        if (currentStatus == TicketStatus.WAITING_CUSTOMER) {
+            return;
+        }
 
+        currentStatus.assertCanTransitionTo(TicketStatus.WAITING_CUSTOMER);
+
+        ticket.setStatus(TicketStatus.WAITING_CUSTOMER);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.WAITING_CUSTOMER);
     }
 
@@ -140,10 +149,14 @@ public class TicketService {
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
+        if (currentStatus == TicketStatus.RESOLVED) {
+            return;
+        }
+
         currentStatus.assertCanTransitionTo(TicketStatus.RESOLVED);
+
         ticket.setStatus(TicketStatus.RESOLVED);
         ticket.setResolvedAt(Instant.now());
-
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.RESOLVED);
     }
 
@@ -160,9 +173,12 @@ public class TicketService {
         }
 
         TicketStatus currentStatus = ticket.getStatus();
+        if (currentStatus == TicketStatus.CLOSED) {
+            return;
+        }
         currentStatus.assertCanTransitionTo(TicketStatus.CLOSED);
-        ticket.setStatus(TicketStatus.CLOSED);
 
+        ticket.setStatus(TicketStatus.CLOSED);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.CLOSED);
     }
 
@@ -175,8 +191,11 @@ public class TicketService {
 
         TicketEntity ticket = getTicket(ticketId);
         TicketPriority currentPriority = ticket.getPriority();
-        ticket.setPriority(newPriority);
+        if (currentPriority == newPriority) {
+            return;
+        }
 
+        ticket.setPriority(newPriority);
         eventService.recordPriorityChangedEvent(ticket, actor, currentPriority, newPriority);
     }
 

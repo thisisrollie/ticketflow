@@ -13,3 +13,9 @@ spring:
         highlight_sql: true
     hibernate:
       ddl-auto: validate
+    open-in-view: false
+
+  mvc:
+    format:
+      date: iso
+      date-time: iso

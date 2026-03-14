@@ -7,6 +7,8 @@ import com.rolliedev.ticketflow.querydsl.QPredicates;
 import lombok.Builder;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 
 import static com.rolliedev.ticketflow.entity.QTicketEntity.ticketEntity;
 
@@ -16,8 +18,8 @@ public record TicketSearchFilter(String keyword,
                                  TicketPriority priority,
                                  Integer creatorId,
                                  Integer assigneeId,
-                                 Instant createdBefore,
-                                 Instant createdAfter) {
+                                 LocalDate createdBefore,
+                                 LocalDate createdAfter) {
 
     public static Predicate buildPredicate(TicketSearchFilter filter) {
         return QPredicates.builder()
@@ -26,8 +28,8 @@ public record TicketSearchFilter(String keyword,
                 .add(filter.priority, ticketEntity.priority::eq)
                 .add(filter.creatorId, ticketEntity.createdBy.id::eq)
                 .add(filter.assigneeId, ticketEntity.assignedTo.id::eq)
-                .add(filter.createdBefore, ticketEntity.createdAt::before)
-                .add(filter.createdAfter, ticketEntity.createdAt::after)
+                .add(startOfNextDay(filter.createdBefore), ticketEntity.createdAt::before)
+                .add(startOfDay(filter.createdAfter), ticketEntity.createdAt::after)
                 .build();
     }
 
@@ -36,5 +38,13 @@ public record TicketSearchFilter(String keyword,
                 .add(keyword, ticketEntity.title::containsIgnoreCase)
                 .add(keyword, ticketEntity.description::containsIgnoreCase)
                 .buildOr();
+    }
+
+    private static Instant startOfNextDay(LocalDate date) {
+        return startOfDay(date != null ? date.plusDays(1L) : null);
+    }
+
+    private static Instant startOfDay(LocalDate date) {
+        return date == null ? null : date.atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 }

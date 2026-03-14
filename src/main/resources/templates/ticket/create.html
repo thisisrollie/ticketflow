@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::section})}">
+<head>
+    <title>Create ticket</title>
+</head>
+<body>
+<section>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Create ticket</h1>
+        <a class="btn btn-outline-secondary" th:href="@{/tickets}">Back</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" th:action="@{/tickets}" th:object="${ticket}">
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <input class="form-control" type="text" th:field="*{title}" maxlength="128" required/>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" rows="5" th:field="*{description}" required></textarea>
+                </div>
+
+                <!-- MVP actorId until Security -->
+                <input type="hidden" name="creatorId" value="3"/>
+
+                <button class="btn btn-primary" type="submit">Create</button>
+            </form>
+        </div>
+    </div>
+</section>
+</body>
+</html>

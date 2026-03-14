@@ -382,9 +382,8 @@ class TicketServiceTest {
         verifyNoInteractions(eventService);
     }
 
-    @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"CLOSED", "IN_PROGRESS"}, mode = EnumSource.Mode.INCLUDE)
-    void shouldThrowExceptionIfTryingToStartProgressOnTicketThatIsClosedOrAlreadyInProgress(TicketStatus currentStatus) {
+    @Test
+    void shouldThrowExceptionIfTryingToStartProgressOnTicketThatIsClosed() {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
@@ -393,16 +392,38 @@ class TicketServiceTest {
 
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
-                .status(currentStatus)
+                .status(TicketStatus.CLOSED)
                 .assignedTo(agent)
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.startProgress(ticket.getId(), agent.getId()));
 
-        String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.IN_PROGRESS).getMessage();
+        String expectedMessage = new InvalidStatusTransitionException(TicketStatus.CLOSED, TicketStatus.IN_PROGRESS).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);
-        assertThat(ticket.getStatus()).isEqualTo(currentStatus);
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.CLOSED);
+
+        verify(userRepository).findById(AGENT_ID);
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void shouldNotRecordEventWhenTryingToStartProgressOnTicketThatIsAlreadyInProgress() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
+                .assignedTo(agent)
+                .build();
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.startProgress(ticket.getId(), agent.getId());
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
@@ -450,7 +471,7 @@ class TicketServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"NEW", "WAITING_CUSTOMER", "RESOLVED", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
+    @EnumSource(value = TicketStatus.class, names = {"NEW", "RESOLVED", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
     void shouldThrowExceptionIfTryingToDoInvalidTransitionWhenChangingTicketStatusToWaitingCustomer(TicketStatus currentStatus) {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
@@ -469,6 +490,27 @@ class TicketServiceTest {
         String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.WAITING_CUSTOMER).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
+
+        verify(userRepository).findById(AGENT_ID);
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void shouldNotRecordEventWhenTryingToRequestCustomerInfoOnTicketThatIsAlreadyWaitingCustomer() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.WAITING_CUSTOMER)
+                .build();
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.requestCustomerInfo(ticket.getId(), agent.getId());
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
@@ -516,7 +558,7 @@ class TicketServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"NEW", "RESOLVED", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
+    @EnumSource(value = TicketStatus.class, names = {"NEW", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
     void shouldThrowExceptionIfTryingToDoInvalidTransitionWhenChangingTicketStatusToResolved(TicketStatus currentStatus) {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
@@ -536,6 +578,27 @@ class TicketServiceTest {
         assertThat(actualException).hasMessage(expectedMessage);
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
         assertThat(ticket.getResolvedAt()).isNull();
+
+        verify(userRepository).findById(AGENT_ID);
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void shouldNotRecordEventWhenTryingToResolveTicketThatIsAlreadyResolved() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.RESOLVED)
+                .build();
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.resolve(ticket.getId(), agent.getId());
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
@@ -609,7 +672,7 @@ class TicketServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"RESOLVED"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = TicketStatus.class, names = {"RESOLVED", "CLOSED"}, mode = EnumSource.Mode.EXCLUDE)
     void shouldThrowExceptionIfTryingToDoInvalidTransitionWhenChangingTicketStatusToClosed(TicketStatus currentStatus) {
         UserEntity customer = UserEntity.builder()
                 .id(CUSTOMER_ID)
@@ -629,6 +692,28 @@ class TicketServiceTest {
         String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.CLOSED).getMessage();
         assertThat(actualException).hasMessage(expectedMessage);
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
+
+        verify(userRepository).findById(CUSTOMER_ID);
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService);
+    }
+
+    @Test
+    void shouldNotRecordEventWhenTryingToCloseTicketThatIsAlreadyClosed() {
+        UserEntity customer = UserEntity.builder()
+                .id(CUSTOMER_ID)
+                .role(Role.CUSTOMER)
+                .build();
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.CLOSED)
+                .createdBy(customer)
+                .build();
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.closeByCustomer(ticket.getId(), customer.getId());
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
@@ -673,5 +758,26 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verifyNoInteractions(ticketRepository, eventService);
+    }
+
+    @Test
+    void shouldNotRecordEventWhenTryingToChangeTicketPriorityToSameValue() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .priority(TicketPriority.MEDIUM)
+                .build();
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.changePriority(ticket.getId(), agent.getId(), ticket.getPriority());
+
+        verify(userRepository).findById(AGENT_ID);
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService);
     }
 }

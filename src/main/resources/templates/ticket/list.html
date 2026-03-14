@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::section})}">
+<head>
+    <title>Tickets</title>
+</head>
+<body>
+<section>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Tickets</h1>
+        <a class="btn btn-primary" th:href="@{/tickets/new}">
+            <i class="bi bi-plus-lg"></i> Create
+        </a>
+    </div>
+
+    <!-- Filter form -->
+    <form class="card card-body mb-3" method="get" th:action="@{/tickets}" th:object="${filter}">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select class="form-select" th:field="*{status}">
+                    <option value="">All</option>
+                    <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}"></option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Priority</label>
+                <select class="form-select" th:field="*{priority}">
+                    <option value="">All</option>
+                    <option th:each="p : ${priorities}" th:value="${p}" th:text="${p}"></option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Keyword</label>
+                <input class="form-control" type="text" placeholder="Title or description"
+                       th:field="*{keyword}"/>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Created after</label>
+                <input class="form-control" type="date" name="createdAfter" th:value="*{createdAfter()}"/>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Created before</label>
+                <input class="form-control" type="date" name="createdBefore" th:value="*{createdBefore()}"/>
+            </div>
+
+            <div class="col-md-1 d-grid">
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-outline-primary" type="submit">
+                    <i class="bi bi-funnel"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-2 d-flex gap-2">
+            <a class="btn btn-link px-0" th:href="@{/tickets}">Reset</a>
+        </div>
+    </form>
+
+    <!-- Results -->
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0 align-middle">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Created</th>
+                    <th>Assignee</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:if="${page.totalElements == 0}">
+                    <td colspan="7" class="text-center py-4 text-muted">No tickets found</td>
+                </tr>
+
+                <tr th:each="t : ${page.content}">
+                    <td class="text-monospace" th:text="${t.id()}">1</td>
+                    <td th:text="${t.title()}">Title</td>
+                    <td><span class="badge bg-secondary" th:text="${t.status()}">NEW</span></td>
+                    <td th:text="${t.priority()}">MEDIUM</td>
+                    <td th:text="${#temporals.format(t.createdAt(), 'yyyy-MM-dd HH:mm')}">2026-02-12</td>
+                    <td th:text="${t.assignedTo() != null ? t.assignedTo().id() : '-'}">-</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" th:href="@{/tickets/{id}(id=${t.id()})}">
+                            View
+                        </a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card-body">
+            <div th:replace="~{fragments/pagination :: pager(page=${page}, baseUrl='/tickets', filter=${filter})}"></div>
+        </div>
+    </div>
+</section>
+</body>
+</html>

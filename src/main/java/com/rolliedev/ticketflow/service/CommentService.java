@@ -31,6 +31,12 @@ public class CommentService {
     private final TicketEventService eventService;
     private final CommentResponseMapper commentMapper;
 
+    public List<CommentResponse> findAllBy(Long ticketId) {
+        return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId).stream()
+                .map(commentMapper::map)
+                .toList();
+    }
+
     @Transactional
     public CommentResponse create(Long ticketId, Integer authorId, String text) {
         TicketEntity ticket = getTicket(ticketId);
@@ -90,12 +96,6 @@ public class CommentService {
         commentRepository.flush();
 
         eventService.recordCommentDeletedEvent(ticket, actor, commentId);
-    }
-
-    public List<CommentResponse> findAllBy(Long ticketId) {
-        return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId).stream()
-                .map(commentMapper::map)
-                .toList();
     }
 
     private TicketEntity getTicket(Long ticketId) {
