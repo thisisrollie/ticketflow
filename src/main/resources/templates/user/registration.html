@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::section})}">
+<head>
+    <title>User registration</title>
+</head>
+<body>
+<section>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">User registration</h1>
+        <a class="btn btn-outline-secondary" th:href="@{/users}">Back</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" th:action="@{/users}" th:object="${user}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">First name</label>
+                        <input class="form-control" type="text" th:field="*{firstName}" maxlength="64" required/>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Last name</label>
+                        <input class="form-control" type="text" th:field="*{lastName}" maxlength="64" required/>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" th:field="*{email}" maxlength="255" required/>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Role</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check" th:each="r : ${roles}">
+                                <input class="form-check-input" type="radio"
+                                       th:field="*{role}"
+                                       th:value="${r}"
+                                       th:id="${'role_' + r}"/>
+                                <label class="form-check-label" th:for="${'role_' + r}" th:text="${r}">
+                                    ROLE
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-check2-circle"></i> Register
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Optional: show per-field errors if you ever switch to returning the view instead of redirect -->
+            <!-- With your current PRG approach you show errors in layout via flash 'errors' -->
+        </div>
+    </div>
+</section>
+</body>
+</html>
