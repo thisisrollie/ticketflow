@@ -4,6 +4,9 @@ import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
+
+import static java.util.stream.Collectors.toSet;
 
 public enum TicketStatus {
     NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED;
@@ -30,7 +33,9 @@ public enum TicketStatus {
         }
     }
 
-    public EnumSet<TicketStatus> getAllowedTransitions() {
-        return ALLOWED_TRANSITIONS.getOrDefault(this, EnumSet.noneOf(TicketStatus.class));
+    public Set<String> getAllowedTransitions() {
+        return ALLOWED_TRANSITIONS.getOrDefault(this, EnumSet.noneOf(TicketStatus.class)).stream()
+                .map(TicketStatus::name)
+                .collect(toSet());
     }
 }

@@ -87,7 +87,7 @@
                     <td><span class="badge bg-secondary" th:text="${t.status()}">NEW</span></td>
                     <td th:text="${t.priority()}">MEDIUM</td>
                     <td th:text="${#temporals.format(t.createdAt(), 'yyyy-MM-dd HH:mm')}">2026-02-12</td>
-                    <td th:text="${t.assignedTo() != null ? t.assignedTo().id() : '-'}">-</td>
+                    <td th:text="${t.assignedTo() != null ? t.assignedTo().fullName() : '-'}">-</td>
                     <td class="text-end">
                         <a class="btn btn-sm btn-outline-primary" th:href="@{/tickets/{id}(id=${t.id()})}">
                             View
