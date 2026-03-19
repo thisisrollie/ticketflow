@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @AutoConfigureMockMvc
 @RequiredArgsConstructor
-class TicketControllerTest extends AbstractSpringBootIT {
+class TicketControllerIT extends AbstractSpringBootIT {
 
     private static final Long TICKET_ID = 1L;
     private static final String ADMIN_ID = "1";
