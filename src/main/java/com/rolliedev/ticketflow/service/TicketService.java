@@ -10,7 +10,6 @@ import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
-import com.rolliedev.ticketflow.mapper.CreateTicketRequestMapper;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
 import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.repository.TicketRepository;
@@ -33,7 +32,6 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final TicketEventService eventService;
     private final TicketResponseMapper ticketResponseMapper;
-    private final CreateTicketRequestMapper createTicketRequestMapper;
     private final AccessPolicy accessPolicy;
 
     public Page<TicketResponse> findAll(TicketSearchFilter filter, Pageable pageable) {
@@ -49,15 +47,17 @@ public class TicketService {
 
     @Transactional
     public TicketResponse create(CreateTicketRequest ticketDto) {
-        return Optional.of(ticketDto)
-                .map(createTicketRequestMapper::map)
-                .map(entity -> {
-                    TicketEntity savedTicket = ticketRepository.save(entity);
-                    eventService.recordCreatedEvent(savedTicket, savedTicket.getCreatedBy());
-                    return savedTicket;
-                })
-                .map(ticketResponseMapper::map)
-                .orElseThrow();
+        UserEntity creator = getUser(ticketDto.creatorId());
+        TicketEntity ticket = TicketEntity.builder()
+                .title(ticketDto.title())
+                .description(ticketDto.description())
+                .status(TicketStatus.NEW)
+                .priority(TicketPriority.MEDIUM)
+                .createdBy(creator)
+                .build();
+        TicketEntity saved = ticketRepository.save(ticket);
+        eventService.recordCreatedEvent(saved, creator);
+        return ticketResponseMapper.map(saved);
     }
 
     @Transactional

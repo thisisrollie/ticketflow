@@ -87,8 +87,6 @@ public class CommentService {
         accessPolicy.requireAdminOrCommentAuthor(actor, comment, "Only admins or the comment author can delete a comment");
 
         commentRepository.delete(comment);
-        commentRepository.flush();
-
         eventService.recordCommentDeletedEvent(ticket, actor, commentId);
     }
 

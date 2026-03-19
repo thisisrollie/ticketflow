@@ -15,7 +15,6 @@ import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
-import com.rolliedev.ticketflow.mapper.CreateTicketRequestMapper;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
@@ -135,9 +134,6 @@ class TicketServiceTest {
 
     @Test
     void shouldCreateTicketAndRecordTicketEventSuccessfully() {
-        CreateTicketRequestMapper createTicketRequestMapper = new CreateTicketRequestMapper(userRepository);
-        ticketService = new TicketService(userRepository, ticketRepository, eventService, ticketMapper, createTicketRequestMapper);
-
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
                 "Getting error when logging in with Google",
@@ -160,6 +156,7 @@ class TicketServiceTest {
         ticketService.create(createRequest);
 
         assertThat(argumentCaptor.getValue().getTitle()).isEqualTo(createRequest.title());
+        assertThat(argumentCaptor.getValue().getDescription()).isEqualTo(createRequest.description());
         assertThat(argumentCaptor.getValue().getStatus()).isEqualTo(TicketStatus.NEW);
         assertThat(argumentCaptor.getValue().getPriority()).isEqualTo(TicketPriority.MEDIUM);
         assertThat(argumentCaptor.getValue().getCreatedBy()).isEqualTo(creator);
@@ -172,9 +169,6 @@ class TicketServiceTest {
 
     @Test
     void shouldNotCreateTicketAndThrowExceptionWhenUserNotFound() {
-        CreateTicketRequestMapper createTicketRequestMapper = new CreateTicketRequestMapper(userRepository);
-        ticketService = new TicketService(userRepository, ticketRepository, eventService, ticketMapper, createTicketRequestMapper);
-
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
                 "Getting error when logging in with Google",
