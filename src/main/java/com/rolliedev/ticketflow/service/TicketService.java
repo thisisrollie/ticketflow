@@ -61,7 +61,7 @@ public class TicketService {
     }
 
     @Transactional
-    public void assign(Long ticketId, Integer actorId, Integer assigneeId) {
+    public TicketResponse assign(Long ticketId, Integer actorId, Integer assigneeId) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can assign tickets");
 
@@ -75,15 +75,17 @@ public class TicketService {
 
         UserEntity currentAssignee = ticket.getAssignedTo();
         if (currentAssignee != null && currentAssignee.getId().equals(newAssignee.getId())) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
         ticket.setAssignedTo(newAssignee);
 
         eventService.recordAssignedEvent(ticket, actor, currentAssignee, newAssignee);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     @Transactional
-    public void startProgress(Long ticketId, Integer actorId) {
+    public TicketResponse startProgress(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can start progress on tickets");
 
@@ -99,7 +101,7 @@ public class TicketService {
 
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.IN_PROGRESS) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
 
         currentStatus.assertCanTransitionTo(TicketStatus.IN_PROGRESS);
@@ -110,34 +112,38 @@ public class TicketService {
 
         ticket.setStatus(TicketStatus.IN_PROGRESS);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.IN_PROGRESS);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     @Transactional
-    public void requestCustomerInfo(Long ticketId, Integer actorId) {
+    public TicketResponse requestCustomerInfo(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can request customer info");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.WAITING_CUSTOMER) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
 
         currentStatus.assertCanTransitionTo(TicketStatus.WAITING_CUSTOMER);
 
         ticket.setStatus(TicketStatus.WAITING_CUSTOMER);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.WAITING_CUSTOMER);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     @Transactional
-    public void resolve(Long ticketId, Integer actorId) {
+    public TicketResponse resolve(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can resolve tickets");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.RESOLVED) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
 
         currentStatus.assertCanTransitionTo(TicketStatus.RESOLVED);
@@ -145,10 +151,12 @@ public class TicketService {
         ticket.setStatus(TicketStatus.RESOLVED);
         ticket.setResolvedAt(Instant.now());
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.RESOLVED);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     @Transactional
-    public void closeByCustomer(Long ticketId, Integer actorId) {
+    public TicketResponse closeByCustomer(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireCustomer(actor, "Only customers can manually close tickets");
 
@@ -157,27 +165,31 @@ public class TicketService {
 
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.CLOSED) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
         currentStatus.assertCanTransitionTo(TicketStatus.CLOSED);
 
         ticket.setStatus(TicketStatus.CLOSED);
         eventService.recordStatusChangedEvent(ticket, actor, currentStatus, TicketStatus.CLOSED);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     @Transactional
-    public void changePriority(Long ticketId, Integer actorId, TicketPriority newPriority) {
+    public TicketResponse changePriority(Long ticketId, Integer actorId, TicketPriority newPriority) {
         UserEntity actor = getUser(actorId);
         accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can change ticket priority");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketPriority currentPriority = ticket.getPriority();
         if (currentPriority == newPriority) {
-            return;
+            return ticketResponseMapper.map(ticket);
         }
 
         ticket.setPriority(newPriority);
         eventService.recordPriorityChangedEvent(ticket, actor, currentPriority, newPriority);
+
+        return ticketResponseMapper.map(ticket);
     }
 
     private UserEntity getUser(Integer userId) {
