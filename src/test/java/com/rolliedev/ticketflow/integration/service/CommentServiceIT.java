@@ -4,7 +4,7 @@ import com.rolliedev.ticketflow.dto.CommentResponse;
 import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
 import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.service.CommentService;
@@ -68,7 +68,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
         TicketCommentEntity comment = DataUtils.getTransientTicketComment(ticket2, customer, "This is a comment");
         commentRepo.saveAndFlush(comment);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> {
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> {
             commentService.delete(ticket2.getId(), comment.getId(), agent.getId());
         });
 

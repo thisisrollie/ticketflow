@@ -6,10 +6,10 @@ import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.mapper.CommentResponseMapper;
+import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
@@ -30,6 +30,7 @@ public class CommentService {
     private final TicketCommentRepository commentRepository;
     private final TicketEventService eventService;
     private final CommentResponseMapper commentMapper;
+    private final AccessPolicy accessPolicy;
 
     public List<CommentResponse> findAllBy(Long ticketId) {
         return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId).stream()
@@ -45,9 +46,7 @@ public class CommentService {
         }
 
         UserEntity author = getUser(authorId);
-        if (author.getRole() == Role.CUSTOMER && !ticket.getCreatedBy().getId().equals(author.getId())) {
-            throw new AccessDeniedException("Customers cannot add comments to tickets they did not create");
-        }
+        accessPolicy.requireTicketOwnerIfCustomer(author, ticket, "Customers cannot add comments to tickets they did not create");
 
         TicketCommentEntity comment = TicketCommentEntity.builder()
                 .ticket(ticket)
@@ -85,12 +84,7 @@ public class CommentService {
         }
 
         UserEntity actor = getUser(actorId);
-        boolean isAdmin = actor.getRole() == Role.ADMIN;
-        boolean isAuthor = comment.getAuthor().getId().equals(actor.getId());
-
-        if (!isAdmin && !isAuthor) {
-            throw new AccessDeniedException("Only admins or the comment author can delete a comment");
-        }
+        accessPolicy.requireAdminOrCommentAuthor(actor, comment, "Only admins or the comment author can delete a comment");
 
         commentRepository.delete(comment);
         commentRepository.flush();

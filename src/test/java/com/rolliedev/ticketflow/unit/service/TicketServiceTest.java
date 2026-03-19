@@ -2,6 +2,7 @@ package com.rolliedev.ticketflow.unit.service;
 
 import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.dsl.Expressions;
+import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
@@ -10,7 +11,7 @@ import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
@@ -28,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -66,6 +68,8 @@ class TicketServiceTest {
     private TicketEventService eventService;
     @Mock
     private TicketResponseMapper ticketMapper;
+    @Spy
+    private AccessPolicy accessPolicy;
     @InjectMocks
     private TicketService ticketService;
 
@@ -223,7 +227,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assign(TICKET_ID, customer.getId(), AGENT_ID));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.assign(TICKET_ID, customer.getId(), AGENT_ID));
 
         assertThat(actualException).hasMessage("Only agents or admins can assign tickets");
 
@@ -245,7 +249,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.assign(TICKET_ID, admin.getId(), customer.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.assign(TICKET_ID, admin.getId(), customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can be assigned to tickets");
 
@@ -347,7 +351,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgress(TICKET_ID, customer.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.startProgress(TICKET_ID, customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can start progress on tickets");
 
@@ -372,7 +376,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.startProgress(ticket.getId(), admin.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.startProgress(ticket.getId(), admin.getId()));
 
         assertThat(actualException).hasMessage("Only the ticket assignee can start progress on the ticket");
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.NEW);
@@ -462,7 +466,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.requestCustomerInfo(TICKET_ID, customer.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.requestCustomerInfo(TICKET_ID, customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can request customer info");
 
@@ -549,7 +553,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.resolve(TICKET_ID, customer.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.resolve(TICKET_ID, customer.getId()));
 
         assertThat(actualException).hasMessage("Only agents or admins can resolve tickets");
 
@@ -637,7 +641,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeByCustomer(TICKET_ID, agent.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.closeByCustomer(TICKET_ID, agent.getId()));
 
         assertThat(actualException).hasMessage("Only customers can manually close tickets");
 
@@ -662,7 +666,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
 
         assertThat(actualException).hasMessage("Only the ticket creator can close tickets");
 
@@ -752,7 +756,7 @@ class TicketServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> ticketService.changePriority(TICKET_ID, customer.getId(), TicketPriority.HIGH));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.changePriority(TICKET_ID, customer.getId(), TicketPriority.HIGH));
 
         assertThat(actualException).hasMessage("Only agents or admins can change ticket priority");
 

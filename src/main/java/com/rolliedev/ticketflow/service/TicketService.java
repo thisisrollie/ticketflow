@@ -6,14 +6,13 @@ import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
-import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.mapper.CreateTicketRequestMapper;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
+import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +34,7 @@ public class TicketService {
     private final TicketEventService eventService;
     private final TicketResponseMapper ticketResponseMapper;
     private final CreateTicketRequestMapper createTicketRequestMapper;
+    private final AccessPolicy accessPolicy;
 
     public Page<TicketResponse> findAll(TicketSearchFilter filter, Pageable pageable) {
         Predicate predicate = TicketSearchFilter.buildPredicate(filter);
@@ -63,14 +63,10 @@ public class TicketService {
     @Transactional
     public void assign(Long ticketId, Integer actorId, Integer assigneeId) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.ADMIN && actor.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can assign tickets");
-        }
+        accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can assign tickets");
 
         UserEntity newAssignee = getUser(assigneeId);
-        if (newAssignee.getRole() != Role.ADMIN && newAssignee.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can be assigned to tickets");
-        }
+        accessPolicy.requireAgentOrAdmin(newAssignee, "Only agents or admins can be assigned to tickets");
 
         TicketEntity ticket = getTicket(ticketId);
         if (ticket.getStatus() == TicketStatus.CLOSED) {
@@ -89,9 +85,7 @@ public class TicketService {
     @Transactional
     public void startProgress(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.ADMIN && actor.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can start progress on tickets");
-        }
+        accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can start progress on tickets");
 
         TicketEntity ticket = getTicket(ticketId);
 
@@ -101,10 +95,7 @@ public class TicketService {
             eventService.recordAssignedEvent(ticket, actor, null, actor);
         }
 
-        UserEntity assignee = ticket.getAssignedTo();
-        if (!assignee.getId().equals(actor.getId())) {
-            throw new AccessDeniedException("Only the ticket assignee can start progress on the ticket");
-        }
+        accessPolicy.requireTicketAssignee(ticket, actor, "Only the ticket assignee can start progress on the ticket");
 
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.IN_PROGRESS) {
@@ -124,9 +115,7 @@ public class TicketService {
     @Transactional
     public void requestCustomerInfo(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.ADMIN && actor.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can request customer info");
-        }
+        accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can request customer info");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
@@ -143,9 +132,7 @@ public class TicketService {
     @Transactional
     public void resolve(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.ADMIN && actor.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can resolve tickets");
-        }
+        accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can resolve tickets");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketStatus currentStatus = ticket.getStatus();
@@ -163,14 +150,10 @@ public class TicketService {
     @Transactional
     public void closeByCustomer(Long ticketId, Integer actorId) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.CUSTOMER) {
-            throw new AccessDeniedException("Only customers can manually close tickets");
-        }
+        accessPolicy.requireCustomer(actor, "Only customers can manually close tickets");
 
         TicketEntity ticket = getTicket(ticketId);
-        if (!ticket.getCreatedBy().getId().equals(actorId)) {
-            throw new AccessDeniedException("Only the ticket creator can close tickets");
-        }
+        accessPolicy.requireTicketOwner(ticket, actor, "Only the ticket creator can close tickets");
 
         TicketStatus currentStatus = ticket.getStatus();
         if (currentStatus == TicketStatus.CLOSED) {
@@ -185,9 +168,7 @@ public class TicketService {
     @Transactional
     public void changePriority(Long ticketId, Integer actorId, TicketPriority newPriority) {
         UserEntity actor = getUser(actorId);
-        if (actor.getRole() != Role.ADMIN && actor.getRole() != Role.AGENT) {
-            throw new AccessDeniedException("Only agents or admins can change ticket priority");
-        }
+        accessPolicy.requireAgentOrAdmin(actor, "Only agents or admins can change ticket priority");
 
         TicketEntity ticket = getTicket(ticketId);
         TicketPriority currentPriority = ticket.getPriority();

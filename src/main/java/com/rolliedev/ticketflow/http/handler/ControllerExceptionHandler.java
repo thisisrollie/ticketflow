@@ -1,6 +1,6 @@
 package com.rolliedev.ticketflow.http.handler;
 
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
@@ -15,7 +15,7 @@ import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Slf4j
-@ControllerAdvice
+@ControllerAdvice(basePackages = "com.rolliedev.ticketflow.http.controller")
 public class ControllerExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -36,7 +36,7 @@ public class ControllerExceptionHandler {
     }
 
     @ExceptionHandler({
-            AccessDeniedException.class,
+            TicketFlowAccessDeniedException.class,
             BusinessRuleViolationException.class,
             InvalidStatusTransitionException.class
     })
