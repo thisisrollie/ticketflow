@@ -68,9 +68,14 @@
 </nav>
 
 <main class="container my-4">
-    <div th:if="${errors}">
-        <div class="alert alert-danger" th:each="error : ${errors}" th:text="${error.defaultMessage}">Error message</div>
+
+    <div class="alert alert-danger" th:each="error : ${errors}">
+        <span th:if="${error instanceof T(org.springframework.validation.FieldError)}"
+              th:text="${error.field + ': ' + error.defaultMessage}">FieldError message</span>
+        <span th:unless="${error instanceof T(org.springframework.validation.FieldError)}"
+              th:text="${error.defaultMessage}">Error message</span>
     </div>
+
     <div th:if="${error}" class="alert alert-danger" th:text="${error}">Error message</div>
 
     <!-- content -->

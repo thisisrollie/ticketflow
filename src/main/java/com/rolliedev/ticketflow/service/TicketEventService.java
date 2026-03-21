@@ -10,6 +10,8 @@ import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.mapper.TicketEventResponseMapper;
 import com.rolliedev.ticketflow.repository.TicketEventRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -31,6 +33,11 @@ public class TicketEventService {
         return eventRepository.findAllByTicketId(ticketId, Sort.by("createdAt", "id").descending()).stream()
                 .map(eventMapper::map)
                 .toList();
+    }
+
+    public Page<TicketEventResponse> getTimeline(Long ticketId, Pageable pageable) {
+        return eventRepository.findAllByTicketId(ticketId, pageable)
+                .map(eventMapper::map);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

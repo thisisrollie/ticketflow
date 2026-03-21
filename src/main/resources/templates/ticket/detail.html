@@ -52,7 +52,8 @@
                 </div>
 
                 <!-- Start progress -->
-                <div class="col-md-2">
+<!--                <div class="col-md-2" th:if="${ticket.status().canTransitionTo(T(com.rolliedev.ticketflow.entity.enums.TicketStatus).IN_PROGRESS)}">-->
+                <div class="col-md-2" th:if="${allowedTransitions.contains('IN_PROGRESS')}">
                     <form method="post" th:action="@{/tickets/{id}/start(id=${ticket.id()})}">
                         <input type="hidden" name="actorId" value="2"/>
                         <button class="btn btn-outline-success w-100" type="submit">Start</button>
@@ -60,7 +61,7 @@
                 </div>
 
                 <!-- Request info -->
-                <div class="col-md-3">
+                <div class="col-md-3" th:if="${allowedTransitions.contains('WAITING_CUSTOMER')}">
                     <form method="post" th:action="@{/tickets/{id}/request-info(id=${ticket.id()})}">
                         <input type="hidden" name="actorId" value="2"/>
                         <button class="btn btn-outline-warning w-100" type="submit">Request info</button>
@@ -68,7 +69,7 @@
                 </div>
 
                 <!-- Resolve -->
-                <div class="col-md-3">
+                <div class="col-md-3" th:if="${allowedTransitions.contains('RESOLVED')}">
                     <form method="post" th:action="@{/tickets/{id}/resolve(id=${ticket.id()})}">
                         <input type="hidden" name="actorId" value="2"/>
                         <button class="btn btn-primary w-100" type="submit">Resolve</button>
@@ -76,7 +77,7 @@
                 </div>
             </div>
 
-            <div class="row g-2 mt-2">
+            <div class="row g-2 mt-2" th:if="${allowedTransitions.contains('CLOSED')}">
                 <!-- Close (customer) -->
                 <div class="col-md-3">
                     <form method="post" th:action="@{/tickets/{id}/close(id=${ticket.id()})}">

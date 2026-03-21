@@ -59,6 +59,7 @@ public class TicketController {
                     model.addAttribute("users", userService.findAllByRoleIn(Role.ADMIN, Role.AGENT));
                     model.addAttribute("timeline", eventService.getTimeline(id));
                     model.addAttribute("comments", commentService.findAllBy(id));
+                    model.addAttribute("allowedTransitions", ticket.status().getAllowedTransitions());
                     return "ticket/detail";
                 })
                 .orElseThrow(() -> ResourceNotFoundException.ticket(id));

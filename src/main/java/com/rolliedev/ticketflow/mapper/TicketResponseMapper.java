@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class TicketResponseMapper implements Mapper<TicketEntity, TicketResponse> {
 
-    private final UserResponseMapper userResponseMapper;
+    private final UserSummaryMapper userSummaryMapper;
 
     @Override
     public TicketResponse map(TicketEntity object) {
@@ -19,8 +19,8 @@ public class TicketResponseMapper implements Mapper<TicketEntity, TicketResponse
                 object.getDescription(),
                 object.getStatus(),
                 object.getPriority(),
-                userResponseMapper.map(object.getCreatedBy()),
-                object.getAssignedTo() != null ? userResponseMapper.map(object.getAssignedTo()) : null,
+                userSummaryMapper.map(object.getCreatedBy()),
+                object.getAssignedTo() != null ? userSummaryMapper.map(object.getAssignedTo()) : null,
                 object.getCreatedAt(),
                 object.getModifiedAt(),
                 object.getResolvedAt()

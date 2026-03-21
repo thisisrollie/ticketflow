@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @AutoConfigureMockMvc
 @RequiredArgsConstructor
-class CommentControllerTest extends AbstractSpringBootIT {
+class CommentControllerIT extends AbstractSpringBootIT {
 
     private static final String TICKET_ID = "1";
     private static final String COMMENT_ID = "1";

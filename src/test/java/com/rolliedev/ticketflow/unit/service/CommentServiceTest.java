@@ -1,12 +1,13 @@
 package com.rolliedev.ticketflow.unit.service;
 
+import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.dto.CommentResponse;
 import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.exception.AccessDeniedException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.mapper.CommentResponseMapper;
@@ -23,6 +24,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
@@ -58,6 +60,8 @@ class CommentServiceTest {
     private TicketEventService eventService;
     @Mock
     private CommentResponseMapper commentMapper;
+    @Spy
+    private AccessPolicy accessPolicy;
     @InjectMocks
     private CommentService commentService;
 
@@ -140,7 +144,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT));
 
         assertThat(actualException).hasMessage("Customers cannot add comments to tickets they did not create");
 
@@ -352,7 +356,7 @@ class CommentServiceTest {
                 .build();
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
-        AccessDeniedException actualException = assertThrows(AccessDeniedException.class, () -> commentService.delete(ticket.getId(), comment.getId(), agent.getId()));
+        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> commentService.delete(ticket.getId(), comment.getId(), agent.getId()));
 
         assertThat(actualException).hasMessage("Only admins or the comment author can delete a comment");
 
