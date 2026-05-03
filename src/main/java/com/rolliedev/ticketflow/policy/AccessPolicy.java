@@ -16,9 +16,11 @@ public class AccessPolicy {
         }
     }
 
-    public void requireTicketAssignee(TicketEntity ticket, UserEntity actor, String message) {
-        UserEntity assignee = ticket.getAssignedTo();
-        if (assignee == null || !assignee.getId().equals(actor.getId())) {
+    public void requireTicketAssigneeOrAdmin(TicketEntity ticket, UserEntity actor, String message) {
+        boolean isAdmin = actor.getRole() == Role.ADMIN;
+        boolean isAssignee = ticket.getAssignedTo() != null && ticket.getAssignedTo().getId().equals(actor.getId());
+
+        if (!isAdmin && !isAssignee) {
             throw new TicketFlowAccessDeniedException(message);
         }
     }
@@ -30,8 +32,8 @@ public class AccessPolicy {
     }
 
     public void requireTicketOwner(TicketEntity ticket, UserEntity actor, String message) {
-        UserEntity owner = ticket.getCreatedBy();
-        if (!owner.getId().equals(actor.getId())) {
+        boolean isOwner = ticket.getCreatedBy().getId().equals(actor.getId());
+        if (!isOwner) {
             throw new TicketFlowAccessDeniedException(message);
         }
     }

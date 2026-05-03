@@ -1,23 +1,23 @@
 package com.rolliedev.ticketflow.http.controller;
 
-import com.rolliedev.ticketflow.dto.ActorCommand;
 import com.rolliedev.ticketflow.dto.AssignTicketRequest;
 import com.rolliedev.ticketflow.dto.ChangePriorityRequest;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
-import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.CommentService;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import com.rolliedev.ticketflow.service.TicketService;
 import com.rolliedev.ticketflow.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -42,31 +42,53 @@ public class TicketController {
     @GetMapping
     public String findAll(Model model,
                           @ModelAttribute TicketSearchFilter filter,
-                          @PageableDefault Pageable pageable) {
-        Page<TicketResponse> page = ticketService.findAll(filter, pageable);
-        model.addAttribute("page", page);
+                          @PageableDefault Pageable pageable,
+                          @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        model.addAttribute("page", ticketService.findAll(filter, pageable, currentUser));
         model.addAttribute("filter", filter);
+        model.addAttribute("filterQueryParams", filter.toQueryString());
         model.addAttribute("statuses", TicketStatus.values());
         model.addAttribute("priorities", TicketPriority.values());
+        if (currentUser.hasAuthority(Role.ADMIN) || currentUser.hasAuthority(Role.AGENT)) {
+            model.addAttribute("assignees", userService.findAllByRoleIn(Role.ADMIN, Role.AGENT));
+        }
+
         return "ticket/list";
     }
 
     @GetMapping("/{id}")
-    public String findById(@PathVariable Long id, Model model) {
-        return ticketService.findById(id)
+    public String findById(@PathVariable Long id,
+                           @AuthenticationPrincipal TicketFlowUserDetails currentUser,
+                           Model model) {
+        return ticketService.findById(id, currentUser)
                 .map(ticket -> {
+                    boolean isInternalUser = currentUser.hasAuthority(Role.ADMIN) || currentUser.hasAuthority(Role.AGENT);
+                    boolean isAdmin = currentUser.hasAuthority(Role.ADMIN);
+
                     model.addAttribute("ticket", ticket);
-                    model.addAttribute("users", userService.findAllByRoleIn(Role.ADMIN, Role.AGENT));
-                    model.addAttribute("timeline", eventService.getTimeline(id));
-                    model.addAttribute("comments", commentService.findAllBy(id));
+                    model.addAttribute("comments", commentService.findAllBy(ticket.id(), Pageable.unpaged()).getContent());
                     model.addAttribute("allowedTransitions", ticket.status().getAllowedTransitions());
+
+                    model.addAttribute("isInternalUser", isInternalUser);
+                    model.addAttribute("isAdmin", isAdmin);
+                    model.addAttribute("currentUserId", currentUser.getId());
+
+                    if (isInternalUser) {
+                        model.addAttribute("internalUsers", userService.findAllByRoleIn(Role.ADMIN, Role.AGENT));
+                        model.addAttribute("timeline", eventService
+                                .getTimeline(ticket.id(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "createdAt", "id")))
+                                .getContent()
+                        );
+                    }
+
                     return "ticket/detail";
                 })
                 .orElseThrow(() -> ResourceNotFoundException.ticket(id));
     }
 
     @GetMapping("/new")
-    public String createForm(Model model, @ModelAttribute("ticket") CreateTicketRequest ticket) {
+    public String createForm(Model model,
+                             @ModelAttribute("ticket") CreateTicketRequest ticket) {
         model.addAttribute("ticket", ticket);
         return "ticket/create";
     }
@@ -74,74 +96,69 @@ public class TicketController {
     @PostMapping
     public String create(@ModelAttribute("ticket") @Validated CreateTicketRequest ticket,
                          BindingResult bindingResult,
-                         RedirectAttributes redirectAttributes) {
+                         RedirectAttributes redirectAttributes,
+                         @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
         if (bindingResult.hasErrors()) {
             redirectAttributes.addFlashAttribute("ticket", ticket);
             redirectAttributes.addFlashAttribute("errors", bindingResult.getAllErrors());
             return "redirect:/tickets/new";
         }
-        return "redirect:/tickets/" + ticketService.create(ticket).id();
+        return "redirect:/tickets/" + ticketService.create(ticket, currentUser.getId()).id();
     }
 
     @PostMapping("/{id}/assign")
     public String assign(@PathVariable Long id,
+                         @AuthenticationPrincipal TicketFlowUserDetails currentUser,
                          @ModelAttribute @Validated AssignTicketRequest request,
                          BindingResult bindingResult,
                          RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.assign(id, request.getActorId(), request.getAssigneeId()));
+        if (bindingResult.hasErrors()) {
+            ra.addFlashAttribute("errors", bindingResult.getAllErrors());
+        } else {
+            ticketService.assign(id, currentUser.getId(), request.getAssigneeId());
+        }
         return "redirect:/tickets/{id}";
     }
 
     @PostMapping("/{id}/start")
     public String startProgress(@PathVariable Long id,
-                                @ModelAttribute @Validated ActorCommand cmd,
-                                BindingResult bindingResult,
-                                RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.startProgress(id, cmd.getActorId()));
+                                @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        ticketService.startProgress(id, currentUser.getId());
         return "redirect:/tickets/{id}";
     }
 
     @PostMapping("/{id}/request-info")
     public String requestCustomerInfo(@PathVariable Long id,
-                                      @ModelAttribute @Validated ActorCommand cmd,
-                                      BindingResult bindingResult,
-                                      RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.requestCustomerInfo(id, cmd.getActorId()));
+                                      @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        ticketService.requestCustomerInfo(id, currentUser.getId());
         return "redirect:/tickets/{id}";
     }
 
     @PostMapping("/{id}/resolve")
     public String resolve(@PathVariable Long id,
-                          @ModelAttribute @Validated ActorCommand cmd,
-                          BindingResult bindingResult,
-                          RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.resolve(id, cmd.getActorId()));
+                          @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        ticketService.resolve(id, currentUser.getId());
         return "redirect:/tickets/{id}";
     }
 
     @PostMapping("/{id}/close")
     public String closeByCustomer(@PathVariable Long id,
-                                  @ModelAttribute @Validated ActorCommand cmd,
-                                  BindingResult bindingResult,
-                                  RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.closeByCustomer(id, cmd.getActorId()));
+                                  @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        ticketService.closeByCustomer(id, currentUser.getId());
         return "redirect:/tickets/{id}";
     }
 
     @PostMapping("/{id}/priority")
     public String changePriority(@PathVariable Long id,
+                                 @AuthenticationPrincipal TicketFlowUserDetails currentUser,
                                  @ModelAttribute @Validated ChangePriorityRequest request,
                                  BindingResult bindingResult,
                                  RedirectAttributes ra) {
-        executeIfValid(bindingResult, ra, () -> ticketService.changePriority(id, request.getActorId(), request.getNewPriority()));
-        return "redirect:/tickets/{id}";
-    }
-
-    private void executeIfValid(BindingResult bindingResult, RedirectAttributes redirectAttributes, Runnable action) {
         if (bindingResult.hasErrors()) {
-            redirectAttributes.addFlashAttribute("errors", bindingResult.getAllErrors());
+            ra.addFlashAttribute("errors", bindingResult.getAllErrors());
         } else {
-            action.run();
+            ticketService.changePriority(id, currentUser.getId(), request.getNewPriority());
         }
+        return "redirect:/tickets/{id}";
     }
 }

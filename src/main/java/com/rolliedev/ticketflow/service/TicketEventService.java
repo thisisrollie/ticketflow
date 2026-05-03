@@ -12,13 +12,11 @@ import com.rolliedev.ticketflow.repository.TicketEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -28,12 +26,6 @@ public class TicketEventService {
 
     private final TicketEventRepository eventRepository;
     private final TicketEventResponseMapper eventMapper;
-
-    public List<TicketEventResponse> getTimeline(Long ticketId) {
-        return eventRepository.findAllByTicketId(ticketId, Sort.by("createdAt", "id").descending()).stream()
-                .map(eventMapper::map)
-                .toList();
-    }
 
     public Page<TicketEventResponse> getTimeline(Long ticketId, Pageable pageable) {
         return eventRepository.findAllByTicketId(ticketId, pageable)

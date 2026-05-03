@@ -16,6 +16,7 @@
     <!-- Filter form -->
     <form class="card card-body mb-3" method="get" th:action="@{/tickets}" th:object="${filter}">
         <div class="row g-2">
+
             <div class="col-md-2">
                 <label class="form-label">Status</label>
                 <select class="form-select" th:field="*{status}">
@@ -46,6 +47,17 @@
             <div class="col-md-2">
                 <label class="form-label">Created before</label>
                 <input class="form-control" type="date" name="createdBefore" th:value="*{createdBefore()}"/>
+            </div>
+
+            <div class="col-md-2" th:if="${#authorization.expression('hasAnyAuthority(''ADMIN'', ''AGENT'')')}">
+                <label class="form-label">Assigned to</label>
+                <select class="form-select" th:field="*{assigneeId}">
+                    <option value="">All</option>
+                    <option th:each="assignee : ${assignees}" th:value="${assignee.id()}"
+                            th:text="${#authentication.principal.id == assignee.id() ? assignee.fullName().concat(' (Me)') : assignee.fullName()}">
+                        Assignee name
+                    </option>
+                </select>
             </div>
 
             <div class="col-md-1 d-grid">
@@ -99,7 +111,7 @@
         </div>
 
         <div class="card-body">
-            <div th:replace="~{fragments/pagination :: pager(page=${page}, baseUrl='/tickets', filter=${filter})}"></div>
+            <div th:replace="~{fragments/pagination :: pager(page=${page}, baseUrl='/tickets', filterQueryParams=${filterQueryParams})}"></div>
         </div>
     </div>
 </section>

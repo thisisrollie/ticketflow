@@ -22,6 +22,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.Instant;
@@ -70,6 +71,9 @@ public class TicketEntity extends AuditingEntity<Long> {
 
     @LastModifiedDate
     private Instant modifiedAt;
+
+    @LastModifiedBy
+    private String modifiedBy;
 
     private Instant resolvedAt;
 

@@ -11,7 +11,8 @@ public class UserSummaryMapper implements Mapper<UserEntity, UserSummary> {
     public UserSummary map(UserEntity object) {
         return new UserSummary(
                 object.getId(),
-                object.getFullName()
+                object.getFullName(),
+                object.getEmail()
         );
     }
 }

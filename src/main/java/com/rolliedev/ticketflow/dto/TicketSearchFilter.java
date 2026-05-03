@@ -1,16 +1,11 @@
 package com.rolliedev.ticketflow.dto;
 
-import com.querydsl.core.types.Predicate;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.querydsl.QPredicates;
 import lombok.Builder;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
-
-import static com.rolliedev.ticketflow.entity.QTicketEntity.ticketEntity;
 
 @Builder
 public record TicketSearchFilter(String keyword,
@@ -21,30 +16,32 @@ public record TicketSearchFilter(String keyword,
                                  LocalDate createdBefore,
                                  LocalDate createdAfter) {
 
-    public static Predicate buildPredicate(TicketSearchFilter filter) {
-        return QPredicates.builder()
-                .add(filter.keyword, TicketSearchFilter::keywordPredicate)
-                .add(filter.status, ticketEntity.status::eq)
-                .add(filter.priority, ticketEntity.priority::eq)
-                .add(filter.creatorId, ticketEntity.createdBy.id::eq)
-                .add(filter.assigneeId, ticketEntity.assignedTo.id::eq)
-                .add(startOfNextDay(filter.createdBefore), ticketEntity.createdAt::before)
-                .add(startOfDay(filter.createdAfter), ticketEntity.createdAt::after)
-                .build();
-    }
+    public String toQueryString() {
+        UriComponentsBuilder builder = UriComponentsBuilder.newInstance();
 
-    private static Predicate keywordPredicate(String keyword) {
-        return QPredicates.builder()
-                .add(keyword, ticketEntity.title::containsIgnoreCase)
-                .add(keyword, ticketEntity.description::containsIgnoreCase)
-                .buildOr();
-    }
+        if (keyword != null) {
+            builder.queryParam("keyword", keyword);
+        }
+        if (status != null) {
+            builder.queryParam("status", status.name());
+        }
+        if (priority != null) {
+            builder.queryParam("priority", priority.name());
+        }
+        if (creatorId != null) {
+            builder.queryParam("creatorId", creatorId);
+        }
+        if (assigneeId != null) {
+            builder.queryParam("assigneeId", assigneeId);
+        }
+        if (createdBefore != null) {
+            builder.queryParam("createdBefore", createdBefore);
+        }
+        if (createdAfter != null) {
+            builder.queryParam("createdAfter", createdAfter);
+        }
 
-    private static Instant startOfNextDay(LocalDate date) {
-        return startOfDay(date != null ? date.plusDays(1L) : null);
-    }
-
-    private static Instant startOfDay(LocalDate date) {
-        return date == null ? null : date.atStartOfDay(ZoneOffset.UTC).toInstant();
+        String query = builder.build().encode().toUriString();
+        return query.isBlank() ? "" : "&" + query.substring(1);
     }
 }

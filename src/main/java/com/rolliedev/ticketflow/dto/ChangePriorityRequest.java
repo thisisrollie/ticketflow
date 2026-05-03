@@ -7,7 +7,5 @@ import lombok.Value;
 @Value
 public class ChangePriorityRequest {
     @NotNull
-    Integer actorId;
-    @NotNull
     TicketPriority newPriority;
 }

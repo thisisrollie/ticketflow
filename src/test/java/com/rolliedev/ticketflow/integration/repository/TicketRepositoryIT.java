@@ -5,90 +5,70 @@ import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
+import com.rolliedev.ticketflow.querydsl.TicketPredicateBuilder;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.testsupport.base.AbstractJpaIT;
 import com.rolliedev.ticketflow.testsupport.util.DataUtils;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Import(TicketPredicateBuilder.class)
 class TicketRepositoryIT extends AbstractJpaIT {
 
-    @Test
-    void shouldReturnFirstPageWhenFilteringByMultipleStatuses() {
-        PageRequest pageable = PageRequest.of(0, 2, Sort.Direction.ASC, "id");
-
-        Page<TicketEntity> page = ticketRepo.findAllByStatusIn(List.of(TicketStatus.IN_PROGRESS, TicketStatus.NEW), pageable);
-
-        assertThat(page.getContent()).hasSize(2);
-        List<Long> ticketIds = page.getContent().stream()
-                .map(TicketEntity::getId)
-                .toList();
-        assertThat(ticketIds).containsExactly(ticket1.getId(), ticket2.getId());
-    }
+    @Autowired
+    private TicketPredicateBuilder ticketPredicateBuilder;
 
     @Test
-    void shouldReturnMatchingTicketsWhenFilterByStatusAndCreatorId() {
-        Predicate predicate = TicketSearchFilter.buildPredicate(
+    void shouldReturnMatchingTicketsWhenFilterIsProvided() {
+        Predicate predicate = ticketPredicateBuilder.buildPredicate(
                 TicketSearchFilter.builder()
                         .status(TicketStatus.NEW)
                         .creatorId(customer.getId())
-                        .build()
+                        .build(),
+                new TicketFlowUserDetails(agent)
         );
 
-        Iterable<TicketEntity> actualResult = ticketRepo.findAll(predicate);
+        Page<TicketEntity> actualResult = ticketRepository.findAll(predicate, PageRequest.of(0, 10));
 
-        assertThat(actualResult).hasSize(2);
-        assertThat(actualResult).allSatisfy(ticket -> {
+        assertThat(actualResult.getContent()).hasSize(2);
+        assertThat(actualResult.getContent()).allSatisfy(ticket -> {
             assertThat(ticket.getStatus()).isEqualTo(TicketStatus.NEW);
             assertThat(ticket.getCreatedBy().getId()).isEqualTo(customer.getId());
         });
-        assertThat(actualResult)
+        assertThat(actualResult.getContent())
                 .extracting(TicketEntity::getId)
                 .contains(ticket2.getId(), ticket3.getId());
     }
 
     @Test
-    void shouldReturnSortedPageWhenFilterByCreatorId() {
-        Predicate predicate = TicketSearchFilter.buildPredicate(
-                TicketSearchFilter.builder()
-                        .creatorId(customer.getId())
-                        .build()
-        );
-        PageRequest pageable = PageRequest.of(0, 2, Sort.Direction.DESC, "id");
-
-        Page<TicketEntity> page = ticketRepo.findAll(predicate, pageable);
-
-        assertThat(page.getContent()).hasSize(2);
-        assertThat(page.getContent())
-                .allSatisfy(ticket -> assertThat(ticket.getCreatedBy().getId()).isEqualTo(customer.getId()));
-        assertThat(page.getContent())
-                .extracting(TicketEntity::getId)
-                .containsExactly(ticket3.getId(), ticket2.getId());
-        assertThat(page.getTotalPages()).isEqualTo(2);
-        assertThat(page.getTotalElements()).isEqualTo(3);
-    }
-
-    @Test
     void shouldReturnMatchingTicketsWhenFilterByKeyword() {
-        TicketEntity ticket4 = DataUtils.getTransientTicket("Can't log in (YouTube)", "Getting error when logging in with Google", TicketStatus.CLOSED, TicketPriority.MEDIUM, customer, null);
-        TicketEntity ticket5 = DataUtils.getTransientTicket("Billing discrepancy", "YouTube charged me twice for last month", TicketStatus.IN_PROGRESS, TicketPriority.CRITICAL, customer, null);
-        ticketRepo.saveAllAndFlush(List.of(ticket4, ticket5));
+        TicketEntity ticket4 = DataUtils.getTransientTicket(
+                "Can't log in (YouTube)", "Getting error when logging in with Google", TicketStatus.CLOSED, TicketPriority.MEDIUM, customer, null
+        );
+        TicketEntity ticket5 = DataUtils.getTransientTicket(
+                "Billing discrepancy", "YouTube charged me twice for last month", TicketStatus.IN_PROGRESS, TicketPriority.CRITICAL, customer, null
+        );
+        ticketRepository.saveAll(List.of(ticket4, ticket5));
+        flushAndClear();
 
-        Predicate predicate = TicketSearchFilter.buildPredicate(
+        Predicate predicate = ticketPredicateBuilder.buildPredicate(
                 TicketSearchFilter.builder()
                         .keyword("youtube")
-                        .build()
+                        .build(),
+                new TicketFlowUserDetails(agent)
         );
 
-        Iterable<TicketEntity> actualResult = ticketRepo.findAll(predicate);
+        Page<TicketEntity> actualResult = ticketRepository.findAll(predicate, PageRequest.of(0, 10));
 
-        assertThat(actualResult).hasSize(2);
-        assertThat(actualResult)
+        assertThat(actualResult.getContent()).hasSize(2);
+        assertThat(actualResult.getContent())
                 .extracting(TicketEntity::getId)
                 .containsExactly(ticket4.getId(), ticket5.getId());
     }

@@ -5,6 +5,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -20,4 +21,8 @@ public abstract class AuditingEntity<T extends Serializable> implements BaseEnti
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    @CreatedBy
+    @Column(name = "audit_created_by", updatable = false)
+    private String auditCreatedBy;
 }

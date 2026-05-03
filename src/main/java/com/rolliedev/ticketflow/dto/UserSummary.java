@@ -1,4 +1,6 @@
 package com.rolliedev.ticketflow.dto;
 
-public record UserSummary(Integer id, String fullName) {
+public record UserSummary(Integer id,
+                          String fullName,
+                          String email) {
 }

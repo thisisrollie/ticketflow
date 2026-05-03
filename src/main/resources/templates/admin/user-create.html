@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::section})}">
+<head>
+    <title>Create internal user</title>
+</head>
+<body>
+<section>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Create an internal user</h1>
+        <a class="btn btn-outline-secondary" th:href="@{/users}">Back</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <form method="post" th:action="@{/admin/users}" th:object="${user}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">First name</label>
+                        <input class="form-control" type="text" th:field="*{firstName}" maxlength="64" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Last name</label>
+                        <input class="form-control" type="text" th:field="*{lastName}" maxlength="64" required>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" th:field="*{email}" maxlength="255" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Password</label>
+                        <input class="form-control" type="password" th:field="*{rawPassword}" maxlength="255" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Role</label>
+                        <select class="form-select" th:field="*{role}" required>
+                            <option value="" disabled>Select role</option>
+                            <option th:each="role : ${roles}" th:value="${role}" th:text="${role}"></option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button class="btn btn-primary" type="submit">Create user</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+</body>
+</html>

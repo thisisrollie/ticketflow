@@ -7,6 +7,7 @@ import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
+import com.rolliedev.ticketflow.exception.InvalidRequestException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.mapper.CommentResponseMapper;
 import com.rolliedev.ticketflow.policy.AccessPolicy;
@@ -14,11 +15,10 @@ import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -32,10 +32,9 @@ public class CommentService {
     private final CommentResponseMapper commentMapper;
     private final AccessPolicy accessPolicy;
 
-    public List<CommentResponse> findAllBy(Long ticketId) {
-        return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId).stream()
-                .map(commentMapper::map)
-                .toList();
+    public Page<CommentResponse> findAllBy(Long ticketId, Pageable pageable) {
+        return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId, pageable)
+                .map(commentMapper::map);
     }
 
     @Transactional
@@ -75,7 +74,7 @@ public class CommentService {
         TicketCommentEntity comment = commentRepository.findWithTicketById(commentId)
                 .orElseThrow(() -> ResourceNotFoundException.comment(commentId));
         if (!comment.getTicket().getId().equals(ticketId)) {
-            throw new BusinessRuleViolationException("Comment does not belong to the given ticket");
+            throw new InvalidRequestException("Comment does not belong to the given ticket");
         }
 
         TicketEntity ticket = comment.getTicket();
@@ -91,14 +90,12 @@ public class CommentService {
     }
 
     private TicketEntity getTicket(Long ticketId) {
-        return Optional.of(ticketId)
-                .flatMap(ticketRepository::findById)
+        return ticketRepository.findById(ticketId)
                 .orElseThrow(() -> ResourceNotFoundException.ticket(ticketId));
     }
 
     private UserEntity getUser(Integer userId) {
-        return Optional.of(userId)
-                .flatMap(userRepository::findById)
+        return userRepository.findById(userId)
                 .orElseThrow(() -> ResourceNotFoundException.user(userId));
     }
 }

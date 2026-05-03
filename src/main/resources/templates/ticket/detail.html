@@ -11,116 +11,185 @@
         <a class="btn btn-outline-secondary" th:href="@{/tickets}">Back</a>
     </div>
 
-    <!-- Ticket info -->
     <div class="card mb-3">
         <div class="card-body">
-            <div class="d-flex justify-content-between">
-                <div>
+            <div class="row g-3">
+                <div class="col-md-8">
                     <h2 class="h5 mb-1" th:text="${ticket.title()}">Title</h2>
-                    <div class="text-muted" th:text="${ticket.description()}">Description</div>
+                    <div class="text-muted mb-2" th:text="${ticket.description()}">Description</div>
+
+                    <div class="small text-muted">
+                        Created:
+                        <span th:text="${#temporals.format(ticket.createdAt(), 'yyyy-MM-dd HH:mm')}"></span>
+                    </div>
+
+                    <div class="small text-muted">
+                        Created by:
+                        <span th:text="${ticket.createdBy().fullName()}">Creator</span>
+                    </div>
+
+                    <div class="small text-muted">
+                        Assignee:
+                        <span th:text="${ticket.assignedTo() != null ? ticket.assignedTo().fullName() : 'Unassigned'}">Unassigned</span>
+                    </div>
                 </div>
-                <div class="text-end">
-                    <div class="mb-1">
+
+                <div class="col-md-4 text-md-end">
+                    <div class="mb-2">
                         <span class="badge bg-secondary" th:text="${ticket.status()}">IN_PROGRESS</span>
                         <span class="badge bg-info text-dark" th:text="${ticket.priority()}">MEDIUM</span>
                     </div>
-                    <div class="small text-muted">
-                        Created: <span th:text="${#temporals.format(ticket.createdAt(), 'yyyy-MM-dd HH:mm')}"></span>
+                </div>
+            </div>
+
+            <hr class="my-3"/>
+
+            <!-- Internal actions -->
+            <div th:if="${isInternalUser and ticket.status().name() != 'CLOSED'}">
+                <div class="row g-2 align-items-end">
+
+                    <!-- Assign -->
+                    <div class="col-lg-4">
+                        <form method="post" th:action="@{/tickets/{id}/assign(id=${ticket.id()})}">
+                            <label class="form-label">Assign to</label>
+                            <div class="input-group">
+                                <select class="form-select" name="assigneeId" required>
+                                    <option value="" disabled th:selected="${ticket.assignedTo() == null}">Select
+                                        agent
+                                    </option>
+                                    <option th:each="u : ${internalUsers}"
+                                            th:value="${u.id()}"
+                                            th:selected="${ticket.assignedTo() != null and u.id() == ticket.assignedTo().id()}"
+                                            th:text="${u.fullName() + ' (' + u.role() + ')'}">
+                                    </option>
+                                </select>
+                                <button class="btn btn-outline-primary" type="submit">Assign</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Start -->
+                    <div class="col-lg-2" th:if="${allowedTransitions.contains('IN_PROGRESS')}">
+                        <form method="post" th:action="@{/tickets/{id}/start(id=${ticket.id()})}">
+                            <button class="btn btn-outline-success w-100" type="submit">Start</button>
+                        </form>
+                    </div>
+
+                    <!-- Request info -->
+                    <div class="col-lg-3" th:if="${allowedTransitions.contains('WAITING_CUSTOMER')}">
+                        <form method="post" th:action="@{/tickets/{id}/request-info(id=${ticket.id()})}">
+                            <button class="btn btn-outline-warning w-100" type="submit">Request info</button>
+                        </form>
+                    </div>
+
+                    <!-- Resolve -->
+                    <div class="col-lg-3" th:if="${allowedTransitions.contains('RESOLVED')}">
+                        <form method="post" th:action="@{/tickets/{id}/resolve(id=${ticket.id()})}">
+                            <button class="btn btn-primary w-100" type="submit">Resolve</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="row g-2 mt-2">
+                    <!-- Change priority -->
+                    <div class="col-lg-4">
+                        <form method="post" th:action="@{/tickets/{id}/priority(id=${ticket.id()})}">
+                            <label class="form-label">Priority</label>
+                            <div class="input-group">
+                                <select class="form-select" name="newPriority" required>
+                                    <option th:each="p : ${T(com.rolliedev.ticketflow.entity.enums.TicketPriority).values()}"
+                                            th:value="${p}"
+                                            th:selected="${p == ticket.priority()}"
+                                            th:text="${p}">
+                                    </option>
+                                </select>
+                                <button class="btn btn-outline-secondary" type="submit">Change</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
 
-            <!-- Actions (MVP forms) -->
-            <hr class="my-3"/>
-
-            <div class="row g-2 align-items-end">
-                <!-- Assign -->
-                <div class="col-md-4">
-                    <form method="post" th:action="@{/tickets/{id}/assign(id=${ticket.id()})}">
-                        <label class="form-label">Assign to</label>
-                        <div class="input-group">
-                            <select class="form-select" name="assigneeId" required>
-                                <option value="" disabled selected>Select agent</option>
-                                <option th:each="u : ${users}" th:value="${u.id()}"
-                                        th:text="${u.fullName() + ' (' + u.role() + ')'}"></option>
-                            </select>
-                            <!-- MVP: actorId passed as hidden (until Security phase) -->
-                            <input type="hidden" name="actorId" value="1"/>
-                            <button class="btn btn-outline-primary" type="submit">Assign</button>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- Start progress -->
-<!--                <div class="col-md-2" th:if="${ticket.status().canTransitionTo(T(com.rolliedev.ticketflow.entity.enums.TicketStatus).IN_PROGRESS)}">-->
-                <div class="col-md-2" th:if="${allowedTransitions.contains('IN_PROGRESS')}">
-                    <form method="post" th:action="@{/tickets/{id}/start(id=${ticket.id()})}">
-                        <input type="hidden" name="actorId" value="2"/>
-                        <button class="btn btn-outline-success w-100" type="submit">Start</button>
-                    </form>
-                </div>
-
-                <!-- Request info -->
-                <div class="col-md-3" th:if="${allowedTransitions.contains('WAITING_CUSTOMER')}">
-                    <form method="post" th:action="@{/tickets/{id}/request-info(id=${ticket.id()})}">
-                        <input type="hidden" name="actorId" value="2"/>
-                        <button class="btn btn-outline-warning w-100" type="submit">Request info</button>
-                    </form>
-                </div>
-
-                <!-- Resolve -->
-                <div class="col-md-3" th:if="${allowedTransitions.contains('RESOLVED')}">
-                    <form method="post" th:action="@{/tickets/{id}/resolve(id=${ticket.id()})}">
-                        <input type="hidden" name="actorId" value="2"/>
-                        <button class="btn btn-primary w-100" type="submit">Resolve</button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="row g-2 mt-2" th:if="${allowedTransitions.contains('CLOSED')}">
-                <!-- Close (customer) -->
-                <div class="col-md-3">
-                    <form method="post" th:action="@{/tickets/{id}/close(id=${ticket.id()})}">
-                        <input type="hidden" name="actorId" value="3"/>
-                        <button class="btn btn-outline-dark w-100" type="submit">Close (customer)</button>
-                    </form>
+            <!-- Customer close action -->
+            <div th:if="${!isInternalUser and allowedTransitions.contains('CLOSED')}">
+                <div class="row g-2 mt-2">
+                    <div class="col-md-3">
+                        <form method="post" th:action="@{/tickets/{id}/close(id=${ticket.id()})}">
+                            <button class="btn btn-outline-dark w-100" type="submit">Close ticket</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="row g-3">
-        <!-- Timeline -->
-        <div class="col-lg-6">
+        <!-- Timeline only for internal users -->
+        <div class="col-lg-6" th:if="${isInternalUser}">
             <div class="card">
                 <div class="card-header">
                     <strong>Timeline</strong>
                 </div>
                 <div class="card-body">
-                    <div class="timeline">
+                    <div th:if="${#lists.isEmpty(timeline)}" class="text-muted">No timeline events yet.</div>
+
+                    <div class="timeline" th:if="${!#lists.isEmpty(timeline)}">
                         <div class="timeline-item" th:each="e : ${timeline}">
                             <div class="d-flex justify-content-between">
                                 <div>
-                  <span th:switch="${e.eventType().name()}">
-                    <span th:case="'CREATED'"><i class="bi bi-plus-circle"></i> Created</span>
-                    <span th:case="'ASSIGNED'"><i class="bi bi-person-check"></i> Assigned</span>
-                    <span th:case="'PRIORITY_CHANGED'"><i class="bi bi-flag"></i> Priority changed</span>
-                    <span th:case="'STATUS_CHANGED'"><i class="bi bi-arrow-repeat"></i> Status changed</span>
-                    <span th:case="'COMMENTED'"><i class="bi bi-chat-left-text"></i> Commented</span>
-                    <span th:case="'COMMENT_DELETED'"><i class="bi bi-trash"></i> Comment deleted</span>
-                    <span th:case="*"><i class="bi bi-info-circle"></i> Event</span>
-                  </span>
+                                    <span th:switch="${e.eventType().name()}">
+                                        <span th:case="'CREATED'"><i class="bi bi-plus-circle"></i> Created</span>
+                                        <span th:case="'ASSIGNED'"><i class="bi bi-person-check"></i> Assigned</span>
+                                        <span th:case="'PRIORITY_CHANGED'"><i
+                                                class="bi bi-flag"></i> Priority changed</span>
+                                        <span th:case="'STATUS_CHANGED'"><i class="bi bi-arrow-repeat"></i> Status changed</span>
+                                        <span th:case="'COMMENTED'"><i
+                                                class="bi bi-chat-left-text"></i> Commented</span>
+                                        <span th:case="'COMMENT_DELETED'"><i
+                                                class="bi bi-trash"></i> Comment deleted</span>
+                                        <span th:case="*"><i class="bi bi-info-circle"></i> Event</span>
+                                    </span>
                                 </div>
                                 <div class="small text-muted"
                                      th:text="${#temporals.format(e.createdAt(),'yyyy-MM-dd HH:mm')}"></div>
                             </div>
 
                             <div class="small text-muted">
-                                Actor: <span th:text="|${e.actor().id()}. ${e.actor().fullName()}|">id. full_name</span>
+                                Actor: <span th:text="${e.actor().fullName()}">Actor full name</span>
                             </div>
 
-                            <pre class="small bg-light p-2 rounded mt-2 mb-0"
-                                 th:text="${e.payload()}">{}</pre>
+                            <div class="small mt-1" th:switch="${e.eventType().name()}">
+                                <div th:case="'ASSIGNED'">
+                                    Assigned to user ID:
+                                    <span th:text="${e.payload()['assigneeId']}">2</span>
+                                </div>
+
+                                <div th:case="'PRIORITY_CHANGED'">
+                                    <span th:text="${e.payload()['oldPriority']}">MEDIUM</span>
+                                    →
+                                    <span th:text="${e.payload()['newPriority']}">HIGH</span>
+                                </div>
+
+                                <div th:case="'STATUS_CHANGED'">
+                                    <span th:text="${e.payload()['oldStatus']}">NEW</span>
+                                    →
+                                    <span th:text="${e.payload()['newStatus']}">IN_PROGRESS</span>
+                                </div>
+
+                                <div th:case="'COMMENTED'">
+                                    Comment added
+                                </div>
+
+                                <div th:case="'COMMENT_DELETED'">
+                                    Comment deleted
+                                </div>
+                            </div>
+
+                            <details class="mt-2">
+                                <summary class="small text-muted">Raw details</summary>
+                                <pre class="small bg-light p-2 rounded mt-2 mb-0"
+                                     th:text="${e.payload()}">{}</pre>
+                            </details>
                         </div>
                     </div>
                 </div>
@@ -128,7 +197,7 @@
         </div>
 
         <!-- Comments -->
-        <div class="col-lg-6">
+        <div th:class="${isInternalUser} ? 'col-lg-6' : 'col-12'">
             <div class="card mb-3">
                 <div class="card-header">
                     <strong>Comments</strong>
@@ -138,20 +207,22 @@
 
                     <div class="mb-3" th:each="c : ${comments}">
                         <div class="d-flex justify-content-between">
-                            <div><strong th:text="|${c.author().id()}. ${c.author().fullName()}|">id. full_name</strong></div>
+                            <div>
+                                <strong th:text="${c.author().fullName() + ' (' + c.author().email() + ')'}">
+                                    Full name (email)
+                                </strong>
+                            </div>
                             <div class="small text-muted"
                                  th:text="${#temporals.format(c.createdAt(),'yyyy-MM-dd HH:mm')}"></div>
                         </div>
+
                         <div th:text="${c.body()}">comment text</div>
 
-                        <div class="mt-1">
-                            <!-- MVP delete -->
+                        <div class="mt-1"
+                             th:if="${ticket.status().name() != 'CLOSED' and (isAdmin or currentUserId == c.author().id())}">
                             <form method="post"
                                   th:action="@{/tickets/{ticketId}/comments/{commentId}/delete(ticketId=${ticket.id()},commentId=${c.id()})}"
                                   class="d-inline">
-                                <input type="hidden" name="ticketId" th:value="${ticket.id()}"/>
-                                <input type="hidden" name="commentId" th:value="${c.id()}"/>
-                                <input type="hidden" name="actorId" value="1"/>
                                 <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
                             </form>
                         </div>
@@ -160,15 +231,19 @@
                     </div>
 
                     <!-- Add comment -->
-                    <form method="post" th:action="@{/tickets/{id}/comments(id=${ticket.id()})}">
+                    <form method="post"
+                          th:if="${ticket.status().name() != 'CLOSED'}"
+                          th:action="@{/tickets/{id}/comments(id=${ticket.id()})}">
                         <div class="mb-2">
                             <label class="form-label">Add comment</label>
                             <textarea class="form-control" name="text" rows="3" required></textarea>
                         </div>
-                        <input type="hidden" name="ticketId" th:value="${ticket.id()}"/>
-                        <input type="hidden" name="authorId" value="3"/>
                         <button class="btn btn-outline-primary" type="submit">Send</button>
                     </form>
+
+                    <div th:if="${ticket.status().name() == 'CLOSED'}" class="text-muted">
+                        Closed tickets cannot be modified.
+                    </div>
                 </div>
             </div>
         </div>

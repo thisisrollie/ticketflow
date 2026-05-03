@@ -20,6 +20,7 @@ public final class DataUtils {
         return UserEntity.builder()
                 .fullName(firstName + " " + lastName)
                 .email(firstName.toLowerCase() + "." + lastName.toLowerCase() + "@gmail.com")
+                .password("{noop}123")
                 .role(role)
                 .build();
     }

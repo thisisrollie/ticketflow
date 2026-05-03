@@ -2,14 +2,11 @@ package com.rolliedev.ticketflow.repository;
 
 import com.querydsl.core.types.Predicate;
 import com.rolliedev.ticketflow.entity.TicketEntity;
-import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.querydsl.QuerydslPredicateExecutor;
-
-import java.util.List;
 
 public interface TicketRepository extends
         JpaRepository<TicketEntity, Long>,
@@ -17,6 +14,4 @@ public interface TicketRepository extends
 
     @EntityGraph(attributePaths = {"createdBy", "assignedTo"})
     Page<TicketEntity> findAll(Predicate predicate, Pageable pageable);
-
-    Page<TicketEntity> findAllByStatusIn(List<TicketStatus> statuses, Pageable pageable);
 }
