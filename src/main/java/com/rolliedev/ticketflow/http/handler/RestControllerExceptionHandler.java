@@ -1,10 +1,11 @@
 package com.rolliedev.ticketflow.http.handler;
 
 import com.rolliedev.ticketflow.dto.ErrorResponse;
-import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
+import com.rolliedev.ticketflow.exception.InvalidRequestException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -46,5 +47,13 @@ public class RestControllerExceptionHandler extends ResponseEntityExceptionHandl
 
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(HttpStatus.CONFLICT.value(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRequestException(InvalidRequestException ex) {
+        log.warn("Invalid request: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
     }
 }

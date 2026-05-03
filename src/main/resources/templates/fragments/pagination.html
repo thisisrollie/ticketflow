@@ -2,10 +2,13 @@
 <html lang="en"
       xmlns:th="http://www.thymeleaf.org">
 <body>
-<div th:fragment="pager(page, baseUrl, filter)">
+<div th:fragment="pager(page, baseUrl, filterQueryParams)"
+     th:if="${page.totalElements > 0}"
+     th:with="extraParams = ${filterQueryParams == null or filterQueryParams.isBlank() ? '' : filterQueryParams}">
+
     <div class="d-flex justify-content-between align-items-center">
         <div class="text-muted small">
-            Showing <span th:text="${page.number * page.size + 1}">1</span>–
+            Showing <span th:text="${page.number * page.size + 1}">1</span> –
             <span th:text="${page.number * page.size + page.numberOfElements}">10</span>
             of <span th:text="${page.totalElements}">0</span>
         </div>
@@ -15,15 +18,9 @@
 
                 <li class="page-item" th:classappend="${page.first} ? 'disabled'">
                     <a class="page-link"
-                       th:href="@{${baseUrl}(
-                 page=${page.number - 1},
-                 size=${page.size},
-                 status=${filter.status},
-                 priority=${filter.priority},
-                 keyword=${filter.keyword},
-                 createdAfter=${filter.createdAfter},
-                 createdBefore=${filter.createdBefore}
-             )}">Prev</a>
+                       th:href="${baseUrl + '?page=' + (page.number - 1) + '&size=' + page.size + extraParams}">
+                        Prev
+                    </a>
                 </li>
 
                 <li class="page-item"
@@ -31,28 +28,16 @@
                     th:classappend="${i == page.number} ? 'active'">
                     <a class="page-link"
                        th:text="${i + 1}"
-                       th:href="@{${baseUrl}(
-                 page=${i},
-                 size=${page.size},
-                 status=${filter.status},
-                 priority=${filter.priority},
-                 keyword=${filter.keyword},
-                 createdAfter=${filter.createdAfter},
-                 createdBefore=${filter.createdBefore}
-             )}">1</a>
+                       th:href="${baseUrl + '?page=' + i + '&size=' + page.size + extraParams}">
+                        1
+                    </a>
                 </li>
 
                 <li class="page-item" th:classappend="${page.last} ? 'disabled'">
                     <a class="page-link"
-                       th:href="@{${baseUrl}(
-                 page=${page.number + 1},
-                 size=${page.size},
-                 status=${filter.status},
-                 priority=${filter.priority},
-                 keyword=${filter.keyword},
-                 createdAfter=${filter.createdAfter},
-                 createdBefore=${filter.createdBefore}
-             )}">Next</a>
+                       th:href="${baseUrl + '?page=' + (page.number + 1) + '&size=' + page.size + extraParams}">
+                        Next
+                    </a>
                 </li>
             </ul>
         </nav>

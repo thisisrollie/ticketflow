@@ -8,8 +8,8 @@
 <section>
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Users</h1>
-        <a class="btn btn-primary" th:href="@{/users/registration}">
-            <i class="bi bi-person-plus"></i> Register
+        <a class="btn btn-primary" th:href="@{/admin/users/new}">
+            <i class="bi bi-person-plus"></i> Create Internal User
         </a>
     </div>
 
@@ -27,24 +27,26 @@
                 </tr>
                 </thead>
                 <tbody>
-                <tr th:if="${#lists.isEmpty(users)}">
+                <tr th:if="${page.totalElements == 0}">
                     <td colspan="6" class="text-center py-4 text-muted">No users found</td>
                 </tr>
 
-                <tr th:each="u : ${users}">
+                <tr th:each="u : ${page.content}">
                     <td class="text-monospace" th:text="${u.id()}">1</td>
                     <td th:text="${u.fullName()}">Bruce Wayne</td>
                     <td th:text="${u.email()}">bruce@wayne.com</td>
                     <td><span class="badge bg-secondary" th:text="${u.role()}">AGENT</span></td>
                     <td th:text="${#temporals.format(u.createdAt(), 'yyyy-MM-dd HH:mm')}">2026-03-10 12:30</td>
                     <td class="text-end">
-                        <a class="btn btn-sm btn-outline-primary" th:href="@{/users/{id}(id=${u.id()})}">
-                            View
-                        </a>
+                        <a class="btn btn-sm btn-outline-primary" th:href="@{/users/{id}(id=${u.id()})}">View</a>
                     </td>
                 </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="card-body">
+            <div th:replace="~{fragments/pagination :: pager(page=${page}, baseUrl='/users', filterQueryParams=${filterQueryParams})}"></div>
         </div>
     </div>
 </section>
