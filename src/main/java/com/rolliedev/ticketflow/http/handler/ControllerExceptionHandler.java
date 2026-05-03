@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.servlet.ModelAndView;
@@ -29,6 +30,16 @@ public class ControllerExceptionHandler {
             "/register",
             "/admin"
     );
+
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ModelAndView handleAuthorizationDeniedException(AuthorizationDeniedException ex) {
+        log.warn("Authorization denied: {}", ex.getMessage());
+
+        ModelAndView mv = new ModelAndView("error/403");
+        mv.setStatus(HttpStatus.FORBIDDEN);
+        mv.addObject("message", ex.getMessage());
+        return mv;
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public Object handleResourceNotFoundException(ResourceNotFoundException ex,

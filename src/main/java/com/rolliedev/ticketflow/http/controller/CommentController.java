@@ -1,9 +1,10 @@
 package com.rolliedev.ticketflow.http.controller;
 
-import com.rolliedev.ticketflow.dto.ActorCommand;
 import com.rolliedev.ticketflow.dto.CreateCommentRequest;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.CommentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
@@ -24,11 +25,12 @@ public class CommentController {
     public String create(@PathVariable Long ticketId,
                          @ModelAttribute @Validated CreateCommentRequest comment,
                          BindingResult bindingResult,
-                         RedirectAttributes redirectAttributes) {
+                         RedirectAttributes redirectAttributes,
+                         @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
         if (bindingResult.hasErrors()) {
             redirectAttributes.addFlashAttribute("errors", bindingResult.getAllErrors());
         } else {
-            commentService.create(ticketId, comment.getAuthorId(), comment.getText());
+            commentService.create(ticketId, currentUser.getId(), comment.getText());
         }
         return "redirect:/tickets/" + ticketId;
     }
@@ -36,14 +38,8 @@ public class CommentController {
     @PostMapping("/{commentId}/delete")
     public String delete(@PathVariable Long ticketId,
                          @PathVariable Long commentId,
-                         @ModelAttribute @Validated ActorCommand cmd,
-                         BindingResult bindingResult,
-                         RedirectAttributes redirectAttributes) {
-        if (bindingResult.hasErrors()) {
-            redirectAttributes.addFlashAttribute("errors", bindingResult.getAllErrors());
-        } else {
-            commentService.delete(ticketId, commentId, cmd.getActorId());
-        }
+                         @AuthenticationPrincipal TicketFlowUserDetails currentUser) {
+        commentService.delete(ticketId, commentId, currentUser.getId());
         return "redirect:/tickets/" + ticketId;
     }
 }
