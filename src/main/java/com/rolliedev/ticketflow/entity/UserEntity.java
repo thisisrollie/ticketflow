@@ -34,6 +34,9 @@ public class UserEntity extends AuditingEntity<Integer> {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(nullable = false)
+    private String password;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private Role role;
