@@ -1,5 +1,14 @@
 package com.rolliedev.ticketflow.entity.enums;
 
-public enum Role {
-    CUSTOMER, AGENT, ADMIN
+import org.springframework.security.core.GrantedAuthority;
+
+public enum Role implements GrantedAuthority {
+    CUSTOMER,
+    AGENT,
+    ADMIN;
+
+    @Override
+    public String getAuthority() {
+        return name();
+    }
 }
