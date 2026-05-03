@@ -2,7 +2,6 @@ package com.rolliedev.ticketflow.unit.service;
 
 import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.dsl.Expressions;
-import com.rolliedev.ticketflow.policy.AccessPolicy;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
@@ -11,13 +10,17 @@ import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
-import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
+import com.rolliedev.ticketflow.exception.InvalidRequestException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
 import com.rolliedev.ticketflow.mapper.TicketResponseMapper;
+import com.rolliedev.ticketflow.policy.AccessPolicy;
+import com.rolliedev.ticketflow.querydsl.TicketPredicateBuilder;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import com.rolliedev.ticketflow.service.TicketService;
 import org.junit.jupiter.api.Test;
@@ -40,7 +43,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -49,7 +52,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class TicketServiceTest {
@@ -66,7 +68,9 @@ class TicketServiceTest {
     @Mock
     private TicketEventService eventService;
     @Mock
-    private TicketResponseMapper ticketMapper;
+    private TicketResponseMapper ticketResponseMapper;
+    @Spy
+    private TicketPredicateBuilder ticketPredicateBuilder;
     @Spy
     private AccessPolicy accessPolicy;
     @InjectMocks
@@ -74,86 +78,97 @@ class TicketServiceTest {
 
     @Test
     void shouldFindTicketSuccessfully() {
+        TicketFlowUserDetails currentUser = new TicketFlowUserDetails(UserEntity.builder().role(Role.ADMIN).build());
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .build();
-        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
-        TicketResponse expectedResponse = new TicketResponse(ticket.getId(), ticket.getTitle(), ticket.getDescription(), ticket.getStatus(), ticket.getPriority(), null, null, null, null, null);
-        doReturn(expectedResponse).when(ticketMapper).map(ticket);
+        TicketResponse ticketResponse = mock(TicketResponse.class);
 
-        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+        doReturn(ticketResponse).when(ticketResponseMapper).map(ticket);
+
+        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID, currentUser);
 
         assertThat(actualResult).isPresent();
-        assertThat(actualResult.get().id()).isEqualTo(expectedResponse.id());
+        assertThat(actualResult.get()).isEqualTo(ticketResponse);
 
         verify(ticketRepository).findById(TICKET_ID);
-        verify(ticketMapper).map(ticket);
+        verify(ticketResponseMapper).map(ticket);
     }
 
     @Test
     void shouldReturnEmptyOptionalWhenTicketNotFound() {
+        TicketFlowUserDetails currentUser = new TicketFlowUserDetails(UserEntity.builder().role(Role.ADMIN).build());
+
         doReturn(Optional.empty()).when(ticketRepository).findById(TICKET_ID);
 
-        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID);
+        Optional<TicketResponse> actualResult = ticketService.findById(TICKET_ID, currentUser);
 
         assertThat(actualResult).isEmpty();
 
         verify(ticketRepository).findById(TICKET_ID);
-        verify(ticketMapper, never()).map(any(TicketEntity.class));
+        verify(ticketResponseMapper, never()).map(any(TicketEntity.class));
     }
 
     @Test
     void shouldFindAllSuccessfullyWhenSearchFilterIsEmpty() {
+        TicketFlowUserDetails currentUser = new TicketFlowUserDetails(UserEntity.builder().role(Role.ADMIN).build());
+
         TicketSearchFilter searchFilter = TicketSearchFilter.builder().build();
         Pageable pageable = PageRequest.of(0, 10);
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .build();
-        doReturn(new PageImpl<>(List.of(ticket))).when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
 
-        ticketService.findAll(searchFilter, pageable);
+        doReturn(new PageImpl<>(List.of(ticket), pageable, 1))
+                .when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
+
+        ticketService.findAll(searchFilter, pageable, currentUser);
 
         Predicate expectedPredicate = Expressions.asBoolean(true).isTrue();
         verify(ticketRepository).findAll(eq(expectedPredicate), eq(pageable));
-        verify(ticketMapper).map(any(TicketEntity.class));
+        verify(ticketResponseMapper).map(any(TicketEntity.class));
     }
 
     @Test
     void shouldReturnEmptyListWhenNoTicketsFound() {
+        TicketFlowUserDetails currentUser = new TicketFlowUserDetails(UserEntity.builder().role(Role.ADMIN).build());
+
         TicketSearchFilter searchFilter = TicketSearchFilter.builder()
                 .creatorId(CUSTOMER_ID)
                 .build();
         Pageable pageable = PageRequest.of(0, 10);
-        doReturn(new PageImpl<TicketEntity>(Collections.emptyList())).when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
 
-        ticketService.findAll(searchFilter, pageable);
+        doReturn(new PageImpl<TicketEntity>(Collections.emptyList(), pageable, 0))
+                .when(ticketRepository).findAll(any(Predicate.class), eq(pageable));
+
+        ticketService.findAll(searchFilter, pageable, currentUser);
 
         verify(ticketRepository).findAll(any(Predicate.class), eq(pageable));
-        verify(ticketMapper, never()).map(any(TicketEntity.class));
+        verify(ticketResponseMapper, never()).map(any(TicketEntity.class));
     }
 
     @Test
     void shouldCreateTicketAndRecordTicketEventSuccessfully() {
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
-                "Getting error when logging in with Google",
-                CUSTOMER_ID
+                "Getting error when logging in with Google"
         );
-
         UserEntity creator = UserEntity.builder()
                 .id(CUSTOMER_ID)
                 .build();
-        doReturn(Optional.of(creator)).when(userRepository).findById(CUSTOMER_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .createdBy(creator)
                 .build();
+
+        doReturn(Optional.of(creator)).when(userRepository).findById(CUSTOMER_ID);
         ArgumentCaptor<TicketEntity> argumentCaptor = ArgumentCaptor.forClass(TicketEntity.class);
         doReturn(ticket).when(ticketRepository).save(argumentCaptor.capture());
-        doReturn(mock(TicketResponse.class)).when(ticketMapper).map(ticket);
+        doReturn(mock(TicketResponse.class)).when(ticketResponseMapper).map(ticket);
 
-        ticketService.create(createRequest);
+        ticketService.create(createRequest, creator.getId());
 
         assertThat(argumentCaptor.getValue().getTitle()).isEqualTo(createRequest.title());
         assertThat(argumentCaptor.getValue().getDescription()).isEqualTo(createRequest.description());
@@ -162,25 +177,25 @@ class TicketServiceTest {
         assertThat(argumentCaptor.getValue().getCreatedBy()).isEqualTo(creator);
 
         verify(userRepository).findById(CUSTOMER_ID);
-        verify(ticketRepository).save(argumentCaptor.capture());
+        verify(ticketRepository).save(any(TicketEntity.class));
         verify(eventService).recordCreatedEvent(ticket, creator);
-        verify(ticketMapper).map(ticket);
+        verify(ticketResponseMapper).map(ticket);
     }
 
     @Test
     void shouldNotCreateTicketAndThrowExceptionWhenUserNotFound() {
         CreateTicketRequest createRequest = new CreateTicketRequest(
                 "Can't log in",
-                "Getting error when logging in with Google",
-                CUSTOMER_ID
+                "Getting error when logging in with Google"
         );
+
         doReturn(Optional.empty()).when(userRepository).findById(CUSTOMER_ID);
 
-        ResourceNotFoundException actualException = assertThrows(ResourceNotFoundException.class, () -> ticketService.create(createRequest));
+        assertThatThrownBy(() -> ticketService.create(createRequest, CUSTOMER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage(ResourceNotFoundException.user(CUSTOMER_ID).getMessage());
 
-        assertThat(actualException).hasMessage(ResourceNotFoundException.user(CUSTOMER_ID).getMessage());
-
-        verifyNoInteractions(ticketRepository, eventService, ticketMapper);
+        verifyNoInteractions(ticketRepository, eventService, ticketResponseMapper);
     }
 
     @Test
@@ -190,18 +205,17 @@ class TicketServiceTest {
                 .id(ADMIN_ID)
                 .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
-
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.NEW)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         // when
@@ -214,40 +228,25 @@ class TicketServiceTest {
     }
 
     @Test
-    void shouldThrowExceptionWhenUserWhoIsNotAdminNorAgentTryToAssignTicket() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
-                .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.assign(TICKET_ID, customer.getId(), AGENT_ID));
-
-        assertThat(actualException).hasMessage("Only agents or admins can assign tickets");
-
-        verifyNoMoreInteractions(userRepository);
-        verifyNoInteractions(ticketRepository, eventService);
-    }
-
-    @Test
     void shouldThrowExceptionWhenAssigningTicketToUserWhoIsNotAgentNorAdmin() {
         UserEntity admin = UserEntity.builder()
                 .id(ADMIN_ID)
                 .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
-
         UserEntity customer = UserEntity.builder()
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
 
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.assign(TICKET_ID, admin.getId(), customer.getId()));
+        assertThatThrownBy(() -> ticketService.assign(TICKET_ID, ADMIN_ID, CUSTOMER_ID))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Only agents or admins can be assigned to tickets");
 
-        assertThat(actualException).hasMessage("Only agents or admins can be assigned to tickets");
-
-        verify(userRepository, times(2)).findById(Mockito.anyInt());
+        verify(userRepository).findById(ADMIN_ID);
+        verify(userRepository).findById(CUSTOMER_ID);
         verifyNoInteractions(ticketRepository, eventService);
     }
 
@@ -257,23 +256,23 @@ class TicketServiceTest {
                 .id(ADMIN_ID)
                 .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
-
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity closedTicket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.CLOSED)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(closedTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        BusinessRuleViolationException actualException = assertThrows(BusinessRuleViolationException.class, () -> ticketService.assign(closedTicket.getId(), admin.getId(), agent.getId()));
+        assertThatThrownBy(() -> ticketService.assign(TICKET_ID, ADMIN_ID, AGENT_ID))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessage("Closed tickets cannot be assigned");
 
-        assertThat(actualException).hasMessage("Closed tickets cannot be assigned");
         assertThat(closedTicket.getAssignedTo()).isNull();
 
         verify(userRepository, times(2)).findById(Mockito.anyInt());
@@ -287,22 +286,21 @@ class TicketServiceTest {
                 .id(ADMIN_ID)
                 .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
-
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
-        TicketEntity newTicket = TicketEntity.builder()
+        TicketEntity newAssignedTicket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.NEW)
                 .assignedTo(agent)
                 .build();
-        doReturn(Optional.of(newTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.assign(newTicket.getId(), admin.getId(), agent.getId());
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(newAssignedTicket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.assign(newAssignedTicket.getId(), admin.getId(), agent.getId());
 
         verify(userRepository, times(2)).findById(Mockito.anyInt());
         verify(ticketRepository).findById(TICKET_ID);
@@ -316,16 +314,16 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(currentStatus)
                 .resolvedAt(currentStatus == TicketStatus.RESOLVED ? Instant.now() : null)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.startProgress(ticket.getId(), agent.getId());
+        ticketService.startProgress(TICKET_ID, AGENT_ID);
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         if (currentStatus == TicketStatus.RESOLVED) {
@@ -338,44 +336,28 @@ class TicketServiceTest {
     }
 
     @Test
-    void shouldThrowExceptionIfUserWhoIsNotAgentNorAdminTryToStartProgressOnTicket() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
-                .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.startProgress(TICKET_ID, customer.getId()));
-
-        assertThat(actualException).hasMessage("Only agents or admins can start progress on tickets");
-
-        verify(userRepository).findById(CUSTOMER_ID);
-        verifyNoInteractions(ticketRepository, eventService);
-    }
-
-    @Test
     void shouldThrowExceptionIfUserWhoIsNotAssignedToTicketTryToStartProgressOnAssignedTicket() {
-        UserEntity admin = UserEntity.builder()
-                .id(ADMIN_ID)
-                .role(Role.ADMIN)
+        UserEntity anotherAgent = UserEntity.builder()
+                .id(99)
+                .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
-
-        TicketEntity ticket = TicketEntity.builder()
+        TicketEntity assignedTicket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.NEW)
                 .assignedTo(UserEntity.builder()
                         .id(AGENT_ID)
                         .build())
                 .build();
-        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.startProgress(ticket.getId(), admin.getId()));
+        doReturn(Optional.of(anotherAgent)).when(userRepository).findById(99);
+        doReturn(Optional.of(assignedTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        assertThat(actualException).hasMessage("Only the ticket assignee can start progress on the ticket");
-        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.NEW);
+        assertThatThrownBy(() -> ticketService.startProgress(assignedTicket.getId(), anotherAgent.getId()))
+                .isInstanceOf(TicketFlowAccessDeniedException.class)
+                .hasMessage("Only the ticket assignee or admin can start progress on the ticket");
+        assertThat(assignedTicket.getStatus()).isEqualTo(TicketStatus.NEW);
 
-        verify(userRepository).findById(ADMIN_ID);
+        verify(userRepository).findById(99);
         verify(ticketRepository).findById(TICKET_ID);
         verifyNoInteractions(eventService);
     }
@@ -386,19 +368,18 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.CLOSED)
                 .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.startProgress(ticket.getId(), agent.getId()));
-
-        String expectedMessage = new InvalidStatusTransitionException(TicketStatus.CLOSED, TicketStatus.IN_PROGRESS).getMessage();
-        assertThat(actualException).hasMessage(expectedMessage);
+        assertThatThrownBy(() -> ticketService.startProgress(ticket.getId(), agent.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(TicketStatus.CLOSED, TicketStatus.IN_PROGRESS).getMessage());
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.CLOSED);
 
         verify(userRepository).findById(AGENT_ID);
@@ -412,13 +393,13 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.IN_PROGRESS)
                 .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.startProgress(ticket.getId(), agent.getId());
@@ -434,13 +415,15 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
         TicketStatus currentTicketStatus = TicketStatus.IN_PROGRESS;
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(currentTicketStatus)
+                .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.requestCustomerInfo(ticket.getId(), agent.getId());
@@ -453,64 +436,74 @@ class TicketServiceTest {
     }
 
     @Test
-    void shouldThrowExceptionIfUserWhoIsNotAgentNorAdminTryToRequestCustomerInfo() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
+    void shouldThrowExceptionIfAgentWhoIsNotTicketAssigneeNorAdminTryToRequestCustomerInfo() {
+        UserEntity anotherAgent = UserEntity.builder()
+                .id(99)
+                .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
+        TicketEntity assignedTicket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
+                .assignedTo(UserEntity.builder()
+                        .id(AGENT_ID)
+                        .role(Role.AGENT)
+                        .build())
+                .build();
 
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.requestCustomerInfo(TICKET_ID, customer.getId()));
+        doReturn(Optional.of(anotherAgent)).when(userRepository).findById(99);
+        doReturn(Optional.of(assignedTicket)).when(ticketRepository).findById(TICKET_ID);
 
-        assertThat(actualException).hasMessage("Only agents or admins can request customer info");
+        assertThatThrownBy(() -> ticketService.requestCustomerInfo(assignedTicket.getId(), anotherAgent.getId()))
+                .isInstanceOf(TicketFlowAccessDeniedException.class)
+                .hasMessage("Only the ticket assignee or admin can request customer info");
 
-        verify(userRepository).findById(CUSTOMER_ID);
-        verifyNoInteractions(ticketRepository, eventService);
+        verify(userRepository).findById(anotherAgent.getId());
+        verify(ticketRepository).findById(TICKET_ID);
+        verifyNoInteractions(eventService, ticketResponseMapper);
     }
 
     @ParameterizedTest
     @EnumSource(value = TicketStatus.class, names = {"NEW", "RESOLVED", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
     void shouldThrowExceptionIfTryingToDoInvalidTransitionWhenChangingTicketStatusToWaitingCustomer(TicketStatus currentStatus) {
-        UserEntity agent = UserEntity.builder()
-                .id(AGENT_ID)
-                .role(Role.AGENT)
+        UserEntity admin = UserEntity.builder()
+                .id(ADMIN_ID)
+                .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(currentStatus)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.requestCustomerInfo(ticket.getId(), agent.getId()));
-
-        String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.WAITING_CUSTOMER).getMessage();
-        assertThat(actualException).hasMessage(expectedMessage);
+        assertThatThrownBy(() -> ticketService.requestCustomerInfo(ticket.getId(), admin.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(currentStatus, TicketStatus.WAITING_CUSTOMER).getMessage());
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
 
-        verify(userRepository).findById(AGENT_ID);
+        verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
         verifyNoInteractions(eventService);
     }
 
     @Test
     void shouldNotRecordEventWhenTryingToRequestCustomerInfoOnTicketThatIsAlreadyWaitingCustomer() {
-        UserEntity agent = UserEntity.builder()
-                .id(AGENT_ID)
-                .role(Role.AGENT)
+        UserEntity admin = UserEntity.builder()
+                .id(ADMIN_ID)
+                .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.WAITING_CUSTOMER)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        ticketService.requestCustomerInfo(ticket.getId(), agent.getId());
+        ticketService.requestCustomerInfo(ticket.getId(), admin.getId());
 
-        verify(userRepository).findById(AGENT_ID);
+        verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
         verifyNoInteractions(eventService);
     }
@@ -521,12 +514,13 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.IN_PROGRESS)
+                .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.resolve(ticket.getId(), agent.getId());
@@ -539,45 +533,28 @@ class TicketServiceTest {
         verify(eventService).recordStatusChangedEvent(ticket, agent, TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED);
     }
 
-    @Test
-    void shouldThrowExceptionIfUserWhoIsNotAgentNorAdminTryToResolveTicket() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
-                .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.resolve(TICKET_ID, customer.getId()));
-
-        assertThat(actualException).hasMessage("Only agents or admins can resolve tickets");
-
-        verify(userRepository).findById(CUSTOMER_ID);
-        verifyNoInteractions(ticketRepository, eventService);
-    }
-
     @ParameterizedTest
     @EnumSource(value = TicketStatus.class, names = {"NEW", "CLOSED"}, mode = EnumSource.Mode.INCLUDE)
     void shouldThrowExceptionIfTryingToDoInvalidTransitionWhenChangingTicketStatusToResolved(TicketStatus currentStatus) {
-        UserEntity agent = UserEntity.builder()
-                .id(AGENT_ID)
-                .role(Role.AGENT)
+        UserEntity admin = UserEntity.builder()
+                .id(ADMIN_ID)
+                .role(Role.ADMIN)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(currentStatus)
                 .build();
+
+        doReturn(Optional.of(admin)).when(userRepository).findById(ADMIN_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.resolve(ticket.getId(), agent.getId()));
-
-        String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.RESOLVED).getMessage();
-        assertThat(actualException).hasMessage(expectedMessage);
+        assertThatThrownBy(() -> ticketService.resolve(ticket.getId(), admin.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(currentStatus, TicketStatus.RESOLVED).getMessage());
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
         assertThat(ticket.getResolvedAt()).isNull();
 
-        verify(userRepository).findById(AGENT_ID);
+        verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
         verifyNoInteractions(eventService);
     }
@@ -588,12 +565,13 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.RESOLVED)
+                .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.resolve(ticket.getId(), agent.getId());
@@ -609,13 +587,13 @@ class TicketServiceTest {
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.RESOLVED)
                 .createdBy(customer)
                 .build();
+
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.closeByCustomer(ticket.getId(), customer.getId());
@@ -628,29 +606,11 @@ class TicketServiceTest {
     }
 
     @Test
-    void shouldThrowExceptionIfUserWhoIsNotCustomerTryToManuallyCloseTicket() {
-        UserEntity agent = UserEntity.builder()
-                .id(AGENT_ID)
-                .role(Role.AGENT)
-                .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.closeByCustomer(TICKET_ID, agent.getId()));
-
-        assertThat(actualException).hasMessage("Only customers can manually close tickets");
-
-        verify(userRepository).findById(AGENT_ID);
-        verifyNoInteractions(ticketRepository, eventService);
-    }
-
-    @Test
     void shouldThrowExceptionIfCustomerTryToCloseForeignTicket() {
         UserEntity customer = UserEntity.builder()
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .createdBy(UserEntity.builder()
@@ -658,11 +618,13 @@ class TicketServiceTest {
                         .role(Role.CUSTOMER)
                         .build())
                 .build();
+
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
-
-        assertThat(actualException).hasMessage("Only the ticket creator can close tickets");
+        assertThatThrownBy(() -> ticketService.closeByCustomer(ticket.getId(), customer.getId()))
+                .isInstanceOf(TicketFlowAccessDeniedException.class)
+                .hasMessage("Only the ticket creator can close tickets");
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
@@ -676,19 +638,18 @@ class TicketServiceTest {
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(currentStatus)
                 .createdBy(customer)
                 .build();
+
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> ticketService.closeByCustomer(ticket.getId(), customer.getId()));
-
-        String expectedMessage = new InvalidStatusTransitionException(currentStatus, TicketStatus.CLOSED).getMessage();
-        assertThat(actualException).hasMessage(expectedMessage);
+        assertThatThrownBy(() -> ticketService.closeByCustomer(ticket.getId(), customer.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(currentStatus, TicketStatus.CLOSED).getMessage());
         assertThat(ticket.getStatus()).isEqualTo(currentStatus);
 
         verify(userRepository).findById(CUSTOMER_ID);
@@ -702,13 +663,13 @@ class TicketServiceTest {
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.CLOSED)
                 .createdBy(customer)
                 .build();
+
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.closeByCustomer(ticket.getId(), customer.getId());
@@ -724,13 +685,16 @@ class TicketServiceTest {
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
 
         TicketPriority ticketPriority = TicketPriority.MEDIUM;
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .priority(ticketPriority)
+                .status(TicketStatus.IN_PROGRESS)
+                .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.changePriority(ticket.getId(), agent.getId(), TicketPriority.HIGH);
@@ -743,33 +707,19 @@ class TicketServiceTest {
     }
 
     @Test
-    void shouldThrowExceptionIfUserWhoIsNotAgentNorAdminTryToChangeTicketPriority() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
-                .build();
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-
-        TicketFlowAccessDeniedException actualException = assertThrows(TicketFlowAccessDeniedException.class, () -> ticketService.changePriority(TICKET_ID, customer.getId(), TicketPriority.HIGH));
-
-        assertThat(actualException).hasMessage("Only agents or admins can change ticket priority");
-
-        verify(userRepository).findById(CUSTOMER_ID);
-        verifyNoInteractions(ticketRepository, eventService);
-    }
-
-    @Test
     void shouldNotRecordEventWhenTryingToChangeTicketPriorityToSameValue() {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
                 .priority(TicketPriority.MEDIUM)
+                .assignedTo(agent)
                 .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
 
         ticketService.changePriority(ticket.getId(), agent.getId(), ticket.getPriority());

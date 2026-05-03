@@ -1,32 +1,40 @@
 package com.rolliedev.ticketflow.unit.http.rest;
 
-import com.rolliedev.ticketflow.dto.ActorCommand;
+import com.rolliedev.ticketflow.config.SecurityConfiguration;
 import com.rolliedev.ticketflow.dto.CommentResponse;
 import com.rolliedev.ticketflow.dto.CreateCommentRequest;
-import com.rolliedev.ticketflow.dto.UserSummary;
+import com.rolliedev.ticketflow.dto.TicketResponse;
+import com.rolliedev.ticketflow.entity.UserEntity;
+import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
-import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
-import com.rolliedev.ticketflow.http.handler.RestControllerExceptionHandler;
+import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
 import com.rolliedev.ticketflow.http.rest.CommentRestController;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.CommentService;
+import com.rolliedev.ticketflow.service.TicketService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -34,142 +42,141 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CommentRestController.class)
-@Import(RestControllerExceptionHandler.class)
+@Import(SecurityConfiguration.class)
 public class CommentRestControllerTest {
 
     private static final Long TICKET_ID = 1L;
-    private static final Long COMMENT_ID = 1L;
     private static final Integer ADMIN_ID = 1;
-    private static final Integer AGENT_ID = 2;
-    private static final Integer CUSTOMER_ID = 3;
+    private static final Long COMMENT_ID = 7L;
 
     @Autowired
     private MockMvc mockMvc;
-
     @Autowired
     private ObjectMapper objectMapper;
 
     @MockitoBean
     private CommentService commentService;
+    @MockitoBean
+    private TicketService ticketService;
 
-    @Test
-    void shouldFindAllByTicketId() throws Exception {
-        doReturn(List.of(commentResponse())).when(commentService).findAllBy(TICKET_ID);
+    private TicketFlowUserDetails adminDetails;
 
-        mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", TICKET_ID))
-                .andExpectAll(
-                        status().isOk(),
-                        jsonPath("$").value(hasSize(1)),
-                        jsonPath("$[0].id").value(COMMENT_ID),
-                        jsonPath("$[0].body").value("Test comment")
-                );
-
-        verify(commentService).findAllBy(TICKET_ID);
+    @BeforeEach
+    void setUp() {
+        adminDetails = mockUserDetails(ADMIN_ID, Role.ADMIN);
     }
 
     @Test
-    void shouldCreateComment() throws Exception {
-        CreateCommentRequest request = new CreateCommentRequest(CUSTOMER_ID, "Test comment");
+    void shouldReturnPagedCommentsWhenTicketExist() throws Exception {
+        List<CommentResponse> commentResponses = List.of(mockCommentResponse(1L), mockCommentResponse(2L));
+        PageImpl<CommentResponse> page = new PageImpl<>(commentResponses, PageRequest.of(0, 10), 2);
 
-        doReturn(commentResponse()).when(commentService).create(TICKET_ID, CUSTOMER_ID, "Test comment");
+        doReturn(Optional.of(TicketResponse.class)).when(ticketService).findById(eq(TICKET_ID), any());
+        doReturn(page).when(commentService).findAllBy(eq(TICKET_ID), any());
+
+        mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
+                        .with(user(adminDetails)))
+                .andExpectAll(
+                        status().isOk(),
+                        jsonPath("$.content").isArray(),
+                        jsonPath("$.content.length()").value(2),
+                        jsonPath("$.metadata.totalElements").value(2)
+                );
+    }
+
+    @Test
+    void shouldReturnEmptyPageWhenTicketHasNoComments() throws Exception {
+        PageImpl<Object> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+
+        doReturn(Optional.of(TicketResponse.class)).when(ticketService).findById(eq(TICKET_ID), any());
+        doReturn(emptyPage).when(commentService).findAllBy(eq(TICKET_ID), any());
+
+        mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
+                        .with(user(adminDetails)))
+                .andExpectAll(
+                        status().isOk(),
+                        jsonPath("$.content").isEmpty(),
+                        jsonPath("$.metadata.totalElements").value(0)
+                );
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenTryingToFindCommentsOfNonExistingTicket() throws Exception {
+        doReturn(Optional.empty()).when(ticketService).findById(eq(TICKET_ID), any());
+
+        mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
+                        .with(user(adminDetails)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldCreateCommentWhenRequestIsValid() throws Exception {
+        CreateCommentRequest request = new CreateCommentRequest("This is a comment");
+        CommentResponse comment = mockCommentResponse(COMMENT_ID);
+
+        doReturn(comment).when(commentService).create(eq(TICKET_ID), any(), eq(request.getText()));
 
         mockMvc.perform(post("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
+                        .with(user(adminDetails))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpectAll(
                         status().isCreated(),
-                        jsonPath("$.id").exists(),
-                        jsonPath("$.author.id").value(CUSTOMER_ID),
-                        jsonPath("$.body").value("Test comment")
+                        jsonPath("$.id").value(COMMENT_ID)
                 );
-
-        verify(commentService).create(TICKET_ID, CUSTOMER_ID, "Test comment");
     }
 
     @Test
-    void shouldReturnBadRequestWhenCreateCommentIsInvalid() throws Exception {
-        CreateCommentRequest invalidRequest = new CreateCommentRequest(null, "");
+    void shouldReturnBadRequestWhenCreateCommentRequestIsInvalid() throws Exception {
+        CreateCommentRequest request = new CreateCommentRequest(null);
 
         mockMvc.perform(post("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpectAll(
-                        status().isBadRequest()
-                );
-
-        verify(commentService, never()).create(any(), any(), any());
-    }
-
-    @Test
-    void shouldReturnConflictWhenTryingToAddCommentOnClosedTicket() throws Exception {
-        CreateCommentRequest request = new CreateCommentRequest(CUSTOMER_ID, "test comment");
-
-        doThrow(new BusinessRuleViolationException("Closed tickets cannot be modified"))
-                .when(commentService).create(TICKET_ID, CUSTOMER_ID, "test comment");
-
-        mockMvc.perform(post("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
+                        .with(user(adminDetails))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpectAll(
-                        status().isConflict(),
-                        jsonPath("$.message").value("Closed tickets cannot be modified")
-                );
+                .andExpect(status().isBadRequest());
 
-        verify(commentService).create(TICKET_ID, CUSTOMER_ID, "test comment");
+        verifyNoInteractions(commentService);
     }
 
     @Test
-    void shouldDeleteComment() throws Exception {
-        ActorCommand request = new ActorCommand(ADMIN_ID);
-
+    void shouldDeleteCommentAndReturnNoContentStatus() throws Exception {
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}", TICKET_ID, COMMENT_ID)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpectAll(
-                        status().isNoContent()
-                );
-
-        verify(commentService).delete(TICKET_ID, COMMENT_ID, ADMIN_ID);
+                        .with(user(adminDetails)))
+                .andExpect(status().isNoContent());
     }
 
     @Test
-    void shouldReturnBadRequestWhenDeleteRequestIsInvalid() throws Exception {
-        ActorCommand invalidRequest = new ActorCommand(null);
+    void shouldReturnNotFoundWhenResourceNotFoundOccurredDuringDelete() throws Exception {
+        doThrow(ResourceNotFoundException.class)
+                .when(commentService).delete(eq(TICKET_ID), eq(COMMENT_ID), any());
 
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}", TICKET_ID, COMMENT_ID)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpectAll(
-                        status().isBadRequest()
-                );
-
-        verify(commentService, never()).delete(any(), any(), any());
+                        .with(user(adminDetails)))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void shouldReturnForbiddenWhenTryingToDeleteCommentByNonAdminNorAuthor() throws Exception {
-        ActorCommand request = new ActorCommand(AGENT_ID);
-
-        doThrow(new TicketFlowAccessDeniedException("Only admins or the comment author can delete a comment"))
-                .when(commentService).delete(TICKET_ID, COMMENT_ID, AGENT_ID);
+    void shouldReturnConflictWhenBusinessRuleViolationOccurredDuringDelete() throws Exception {
+        doThrow(BusinessRuleViolationException.class)
+                .when(commentService).delete(eq(TICKET_ID), eq(COMMENT_ID), any());
 
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}", TICKET_ID, COMMENT_ID)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpectAll(
-                        status().isForbidden(),
-                        jsonPath("$.message").value("Only admins or the comment author can delete a comment")
-                );
-
-        verify(commentService).delete(TICKET_ID, COMMENT_ID, AGENT_ID);
+                        .with(user(adminDetails)))
+                .andExpect(status().isConflict());
     }
 
-    private CommentResponse commentResponse() {
-        return new CommentResponse(
-                COMMENT_ID,
-                new UserSummary(CUSTOMER_ID, "Clark Kent"),
-                "Test comment",
-                Instant.parse("2026-03-17T12:30:00Z")
-        );
+    private TicketFlowUserDetails mockUserDetails(Integer id, Role role) {
+        UserEntity user = UserEntity.builder()
+                .id(id)
+                .email(role.name().toLowerCase() + "@test.com")
+                .role(role)
+                .build();
+        return new TicketFlowUserDetails(user);
+    }
+
+    private CommentResponse mockCommentResponse(Long id) {
+        return mock(CommentResponse.class, invocation ->
+                invocation.getMethod().getName().equals("id") ? id : null);
     }
 }

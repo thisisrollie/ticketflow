@@ -1,6 +1,7 @@
 package com.rolliedev.ticketflow.integration;
 
-import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
+import com.rolliedev.ticketflow.testsupport.annotation.IT;
+import com.rolliedev.ticketflow.testsupport.container.AbstractPostgresContainerTest;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -9,7 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class SmokeIT extends AbstractSpringBootIT {
+@IT
+public class SmokeIT extends AbstractPostgresContainerTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;

@@ -10,7 +10,12 @@ import com.rolliedev.ticketflow.entity.enums.Role;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
+import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
+import com.rolliedev.ticketflow.exception.InvalidRequestException;
 import com.rolliedev.ticketflow.exception.InvalidStatusTransitionException;
+import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
+import com.rolliedev.ticketflow.exception.TicketFlowAccessDeniedException;
+import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.TicketService;
 import com.rolliedev.ticketflow.testsupport.base.AbstractSpringBootIT;
 import com.rolliedev.ticketflow.testsupport.util.DataUtils;
@@ -18,18 +23,23 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.RollbackException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.jdbc.SqlMergeMode;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TicketServiceIT extends AbstractSpringBootIT {
@@ -39,207 +49,416 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Autowired
     private EntityManagerFactory entityManagerFactory;
 
-    @Test
-    void shouldListTicketsMatchingFilterCriteria() {
-        TicketSearchFilter searchFilter = TicketSearchFilter.builder()
-                .priority(TicketPriority.HIGH)
-                .creatorId(customer.getId())
-                .build();
-        PageRequest pageable = PageRequest.of(0, 10);
+    private UserEntity admin, agent, customer;
+    private TicketEntity ticket1, ticket2;
 
-        Page<TicketResponse> actualPage = ticketService.findAll(searchFilter, pageable);
+    @BeforeEach
+    void setUp() {
+        admin = userRepository.findByEmail("lex.luthor@gmail.com").orElseThrow();
+        agent = userRepository.findByEmail("bruce.wayne@gmail.com").orElseThrow();
+        customer = userRepository.findByEmail("clark.kent@gmail.com").orElseThrow();
 
-        assertThat(actualPage.getContent()).hasSize(1);
-        assertThat(actualPage.getContent()).allSatisfy(ticket -> {
-            assertThat(ticket.priority()).isEqualTo(TicketPriority.HIGH);
-            assertThat(ticket.createdBy().id()).isEqualTo(customer.getId());
-        });
+        ticket1 = ticketRepository.findById(1L).orElseThrow();
+        ticket2 = ticketRepository.findById(2L).orElseThrow();
     }
 
     @Test
-    void shouldReturnEmptyPageWhenNoTicketsMatchFilterCriteria() {
-        TicketSearchFilter searchFilter = TicketSearchFilter.builder()
-                .priority(TicketPriority.LOW)
-                .creatorId(customer.getId())
-                .build();
-        PageRequest pageable = PageRequest.of(0, 10);
-
-        Page<TicketResponse> actualPage = ticketService.findAll(searchFilter, pageable);
-
-        assertThat(actualPage.getContent()).isEmpty();
-    }
-
-    @Test
-    void shouldReturnAllTicketsWhenSearchFilterIsEmpty() {
+    void shouldReturnAllTicketsWhenActorIsAdmin() {
+        TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
         TicketSearchFilter emptyFilter = TicketSearchFilter.builder().build();
-        PageRequest pageable = PageRequest.of(0, 10);
 
-        Page<TicketResponse> actualPage = ticketService.findAll(emptyFilter, pageable);
+        Page<TicketResponse> actualResult = ticketService.findAll(emptyFilter, PageRequest.of(0, 10), adminDetails);
 
-        assertThat(actualPage.getContent()).hasSize(3);
+        assertThat(actualResult.getTotalElements()).isEqualTo(5);
+        assertThat(actualResult.getContent())
+                .extracting(TicketResponse::id)
+                .containsExactlyInAnyOrder(1L, 2L, 3L, 4L, 5L);
     }
 
     @Test
-    void shouldCreateTicketAndRecordTicketEventSuccessfully() {
-        CreateTicketRequest createRequest = new CreateTicketRequest("dummy_title", "dummy_description", customer.getId());
+    void shouldReturnOnlyOwnTicketsWhenActorIsCustomer() {
+        TicketFlowUserDetails customerDetails = new TicketFlowUserDetails(customer);
+        TicketSearchFilter emptyFilter = TicketSearchFilter.builder().build();
 
-        TicketResponse actualResult = ticketService.create(createRequest);
+        Page<TicketResponse> actualResult = ticketService.findAll(emptyFilter, PageRequest.of(0, 10), customerDetails);
 
-        List<TicketEntity> allTickets = ticketRepo.findAll();
-        assertThat(allTickets).hasSize(4);
-
-        assertThat(actualResult.id()).isNotNull();
-        assertThat(actualResult.title()).isEqualTo("dummy_title");
-        assertThat(actualResult.description()).isEqualTo("dummy_description");
-        assertThat(actualResult.status()).isEqualTo(TicketStatus.NEW);
-        assertThat(actualResult.priority()).isEqualTo(TicketPriority.MEDIUM);
-
-        List<TicketEventEntity> eventsForTicket = eventRepo.findAllByTicketId(actualResult.id(), Sort.unsorted());
-        assertThat(eventsForTicket).hasSize(1);
-        assertThat(eventsForTicket.getFirst().getEventType()).isEqualTo(TicketEventType.CREATED);
-        assertThat(eventsForTicket.getFirst().getPayload()).containsEntry("ticketId", actualResult.id().toString());
+        assertThat(actualResult.getTotalElements()).isEqualTo(3);
+        assertThat(actualResult.getContent())
+                .extracting(TicketResponse::id)
+                .containsExactlyInAnyOrder(1L, 2L, 3L);
     }
 
     @Test
-    void shouldAssignTicketToAgentSuccessfully() {
-        ticketService.assign(ticket2.getId(), agent.getId(), agent.getId());
+    void shouldReturnOnlyTicketsWithMatchingStatusWhenStatusFilterIsProvided() {
+        TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
+        TicketSearchFilter filter = TicketSearchFilter.builder().status(TicketStatus.NEW).build();
+
+        Page<TicketResponse> actualResult = ticketService.findAll(filter, PageRequest.of(0, 10), adminDetails);
+
+        assertThat(actualResult.getTotalElements()).isEqualTo(2);
+        assertThat(actualResult.getContent())
+                .extracting(TicketResponse::status)
+                .containsOnly(TicketStatus.NEW);
+    }
+
+    @Test
+    void shouldReturnOnlyTicketsWithMatchingPriorityWhenPriorityFilterIsProvided() {
+        TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
+        TicketSearchFilter filter = TicketSearchFilter.builder().priority(TicketPriority.HIGH).build();
+
+        Page<TicketResponse> actualResult = ticketService.findAll(filter, PageRequest.of(0, 10), adminDetails);
+
+        assertThat(actualResult.getTotalElements()).isEqualTo(1);
+        assertThat(actualResult.getContent().getFirst().id()).isEqualTo(1L);
+    }
+
+    @Test
+    void shouldReturnTicketWhenActorIsAdmin() {
+        TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
+
+        Optional<TicketResponse> actualResult = ticketService.findById(ticket1.getId(), adminDetails);
+
+        assertThat(actualResult).isPresent();
+        assertThat(actualResult.get().id()).isEqualTo(ticket1.getId());
+    }
+
+    @Test
+    void shouldReturnOwnTicketWhenActorIsCustomer() {
+        TicketFlowUserDetails customerDetails = new TicketFlowUserDetails(customer);
+
+        Optional<TicketResponse> actualResult = ticketService.findById(ticket1.getId(), customerDetails);
+
+        assertThat(actualResult).isPresent();
+        assertThat(actualResult.get().id()).isEqualTo(ticket1.getId());
+    }
+
+    @Test
+    void shouldReturnEmptyOptionalWhenActorIsCustomerAndTicketIsNotOwnedByThem() {
+        TicketFlowUserDetails customerDetails = new TicketFlowUserDetails(customer);
+        TicketEntity notCustomerTicket = ticketRepository.findById(4L).orElseThrow();
+
+        Optional<TicketResponse> actualResult = ticketService.findById(notCustomerTicket.getId(), customerDetails);
+
+        assertThat(actualResult).isEmpty();
+    }
+
+    @Test
+    void shouldReturnEmptyOptionalWhenTicketDoesNotExist() {
+        TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
+
+        Optional<TicketResponse> actualResult = ticketService.findById(999L, adminDetails);
+
+        assertThat(actualResult).isEmpty();
+    }
+
+    @Test
+    void shouldPersistTicketWithCorrectDefaultsAndRecordCreatedEvent() {
+        CreateTicketRequest request = new CreateTicketRequest(
+                "New issue",
+                "Something is not working"
+        );
+
+        TicketResponse actualResult = ticketService.create(request, customer.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket2.getId()).orElseThrow();
-        assertThat(actualTicket.getAssignedTo()).isNotNull();
-        assertThat(actualTicket.getAssignedTo().getId()).isEqualTo(agent.getId());
-        assertThat(actualTicket.getStatus()).isEqualTo(TicketStatus.NEW);
+        TicketEntity persisted = ticketRepository.findById(actualResult.id()).orElseThrow();
+        assertThat(persisted.getTitle()).isEqualTo("New issue");
+        assertThat(persisted.getDescription()).isEqualTo("Something is not working");
+        assertThat(persisted.getStatus()).isEqualTo(TicketStatus.NEW);
+        assertThat(persisted.getPriority()).isEqualTo(TicketPriority.MEDIUM);
+        assertThat(persisted.getCreatedBy().getId()).isEqualTo(customer.getId());
+        assertThat(persisted.getAssignedTo()).isNull();
 
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket2.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents).hasSize(2);
-        assertThat(ticketEvents.getFirst().getEventType()).isEqualTo(TicketEventType.ASSIGNED);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("previousAssigneeId", null);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("assigneeId", agent.getId().toString());
+        boolean createdEventExists = eventRepository
+                .findAllByTicketId(persisted.getId(), Pageable.unpaged())
+                .stream()
+                .anyMatch(e -> e.getEventType() == TicketEventType.CREATED);
+
+        assertThat(createdEventExists).isTrue();
     }
 
     @Test
-    void shouldAssignTicketToAnotherAgentSuccessfully() {
-        UserEntity anotherAgent = DataUtils.getTransientUser("Oliver", "Queen", Role.AGENT);
-        userRepo.saveAndFlush(anotherAgent);
+    void shouldThrowResourceNotFoundExceptionWhenCreatorDoesNotExistDuringCreate() {
+        CreateTicketRequest request = new CreateTicketRequest("Title", "Description");
 
-        ticketService.assign(ticket1.getId(), agent.getId(), anotherAgent.getId());
+        assertThatThrownBy(() -> ticketService.create(request, 999))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    void shouldAssignUnassignedTicketAndRecordEventWhenActorIsAdmin() {
+        // ticket2 is unassigned
+        TicketResponse actualResult = ticketService.assign(ticket2.getId(), admin.getId(), agent.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getAssignedTo().getId()).isEqualTo(anotherAgent.getId());
+        TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
+        assertThat(updated.getAssignedTo().getId()).isEqualTo(agent.getId());
 
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket1.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents).hasSize(7);
-        assertThat(ticketEvents.getFirst().getEventType()).isEqualTo(TicketEventType.ASSIGNED);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("previousAssigneeId", agent.getId().toString());
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("assigneeId", anotherAgent.getId().toString());
+        boolean assignedEventExists = eventRepository
+                .findAllByTicketId(ticket2.getId(), Pageable.unpaged())
+                .stream()
+                .anyMatch(e -> e.getEventType() == TicketEventType.ASSIGNED);
+        assertThat(assignedEventExists).isTrue();
     }
 
     @Test
-    void shouldDoNothingWhenAssigningTicketToTheSameAgent() {
-        ticketService.assign(ticket1.getId(), agent.getId(), agent.getId());
+    @WithMockUser(authorities = "ADMIN")
+    void shouldReassignTicketWhenActorIsAdmin() {
+        // ticket1 is assigned to agent — admin can reassign
+        TicketResponse actualResult = ticketService.assign(ticket1.getId(), admin.getId(), admin.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getAssignedTo().getId()).isEqualTo(agent.getId());
-
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket1.getId(), Sort.unsorted());
-        assertThat(ticketEvents).hasSize(6);
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        assertThat(updated.getAssignedTo().getId()).isEqualTo(admin.getId());
     }
 
     @Test
-    void shouldStartProgressOnUnassignedTicketSuccessfully() {
+    @WithMockUser(authorities = "AGENT")
+    void shouldThrowAccessDeniedExceptionWhenAgentTriesToReassignTicketNotOwnedByThem() {
+        UserEntity anotherAgent = DataUtils.getTransientUser("Will", "Smith", Role.AGENT);
+        userRepository.saveAndFlush(anotherAgent);
+
+        assertThatThrownBy(() -> ticketService.assign(ticket1.getId(), anotherAgent.getId(), anotherAgent.getId()))
+                .isInstanceOf(TicketFlowAccessDeniedException.class)
+                .hasMessage("Only the ticket assignee or admin can reassign tickets");
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    void shouldThrowInvalidRequestExceptionWhenAssigningToCustomer() {
+        assertThatThrownBy(() -> ticketService.assign(ticket2.getId(), admin.getId(), customer.getId()))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Only agents or admins can be assigned to tickets");
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    void shouldThrowBusinessRuleViolationExceptionWhenAssigningToClosedTicket() {
+        ticket2.setStatus(TicketStatus.CLOSED);
+        ticketRepository.save(ticket2);
+        flushAndClear();
+
+        assertThatThrownBy(() -> ticketService.assign(ticket2.getId(), admin.getId(), agent.getId()))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("Closed tickets cannot be assigned");
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    void shouldNotRecordEventWhenAssigneeIsAlreadyAssigned() {
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        ticketService.assign(ticket1.getId(), admin.getId(), agent.getId());
+        flushAndClear();
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldAutoAssignTicketAndChangeStatusToInProgressWhenTicketIsNewAndUnassigned() {
+        // ticket2 is NEW and unassigned
         ticketService.startProgress(ticket2.getId(), agent.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket2.getId()).orElseThrow();
-        assertThat(actualTicket.getAssignedTo().getId()).isEqualTo(agent.getId());
-        assertThat(actualTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(updated.getAssignedTo().getId()).isEqualTo(agent.getId());
 
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket2.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents).hasSize(3);
-        assertThat(ticketEvents)
+        List<TicketEventEntity> events = eventRepository.findAllByTicketId(ticket2.getId(), Pageable.unpaged()).getContent();
+        assertThat(events)
                 .extracting(TicketEventEntity::getEventType)
-                .containsExactly(TicketEventType.STATUS_CHANGED, TicketEventType.ASSIGNED, TicketEventType.CREATED);
+                .contains(TicketEventType.ASSIGNED, TicketEventType.STATUS_CHANGED);
     }
 
     @Test
-    void shouldChangeTicketStatusToWaitingCustomerWhenAgentRequestsCustomerInfo() {
-        final TicketStatus currentStatus = ticket1.getStatus();
+    @WithMockUser(authorities = "AGENT")
+    void shouldClearResolvedAtAndChangeStatusToInProgressWhenResolvedTicketIsStartedAgain() {
+        ticket2.setStatus(TicketStatus.RESOLVED);
+        ticket2.setAssignedTo(agent);
+        ticket2.setResolvedAt(Instant.now());
+        ticketRepository.save(ticket2);
+        flushAndClear();
 
+        ticketService.startProgress(ticket2.getId(), agent.getId());
+        flushAndClear();
+
+        TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(updated.getResolvedAt()).isNull();
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldNotRecordNewEventWhenTicketIsAlreadyInProgress() {
+        // ticket1 is already IN_PROGRESS
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        ticketService.startProgress(ticket1.getId(), agent.getId());
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldChangeStatusToWaitingCustomerAndRecordEventWhenTicketIsInProgress() {
         ticketService.requestCustomerInfo(ticket1.getId(), agent.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getStatus()).isEqualTo(TicketStatus.WAITING_CUSTOMER);
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.WAITING_CUSTOMER);
 
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket1.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents.getFirst().getEventType()).isEqualTo(TicketEventType.STATUS_CHANGED);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("oldStatus", currentStatus.name());
+        boolean statusEventExists = eventRepository
+                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
+                .stream()
+                .findFirst()
+                .filter(event -> event.getEventType() == TicketEventType.STATUS_CHANGED)
+                .isPresent();
+
+        assertThat(statusEventExists).isTrue();
     }
 
     @Test
-    void shouldSetResolvedAtWhenTicketStatusChangedToResolved() {
-        assertNull(ticket1.getResolvedAt());
+    @WithMockUser(authorities = "AGENT")
+    void shouldNotRecordNewEventWhenTicketIsAlreadyWaitingForCustomer() {
+        ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
+        ticketRepository.save(ticket1);
+        flushAndClear();
 
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        ticketService.requestCustomerInfo(ticket1.getId(), agent.getId());
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldThrowInvalidStatusTransitionExceptionWhenChangingNewTicketToWaitingCustomer() {
+        ticket2.setAssignedTo(agent);
+        flushAndClear();
+
+        assertThatThrownBy(() -> ticketService.requestCustomerInfo(ticket2.getId(), agent.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(TicketStatus.NEW, TicketStatus.WAITING_CUSTOMER).getMessage());
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldResolveTicketSetResolvedAtAndRecordEventWhenActorCanResolveTicket() {
         ticketService.resolve(ticket1.getId(), agent.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getResolvedAt()).isNotNull();
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        assertThat(updated.getResolvedAt()).isNotNull();
+
+        boolean statusEventExists = eventRepository
+                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
+                .stream()
+                .findFirst()
+                .filter(event -> event.getEventType() == TicketEventType.STATUS_CHANGED)
+                .isPresent();
+
+        assertThat(statusEventExists).isTrue();
     }
 
     @Test
-    void shouldThrowExceptionWhenTryingToResolveTicketThatIsNotInProgress() {
-        TicketEntity newTicket = DataUtils.getTransientTicket("dummy_title", "dummy_description", TicketStatus.NEW, TicketPriority.MEDIUM, customer, null);
-        ticketRepo.saveAndFlush(newTicket);
-
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> {
-            ticketService.resolve(newTicket.getId(), agent.getId());
-        });
-
-        assertThat(actualException).hasMessage(new InvalidStatusTransitionException(TicketStatus.NEW, TicketStatus.RESOLVED).getMessage());
-    }
-
-    @Test
-    void shouldCloseTicketSuccessfully() {
+    @WithMockUser(authorities = "AGENT")
+    void shouldNotRecordNewEventWhenTicketIsAlreadyResolved() {
         ticket1.setStatus(TicketStatus.RESOLVED);
+        ticket1.setResolvedAt(Instant.now());
+        ticketRepository.save(ticket1);
+        flushAndClear();
+
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        ticketService.resolve(ticket1.getId(), agent.getId());
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "CUSTOMER")
+    void shouldCloseTicketWhenResolvedTicketIsClosedByCustomer() {
+        ticket1.setStatus(TicketStatus.RESOLVED);
+        ticket1.setResolvedAt(Instant.now());
+        ticketRepository.save(ticket1);
+        flushAndClear();
 
         ticketService.closeByCustomer(ticket1.getId(), customer.getId());
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getStatus()).isEqualTo(TicketStatus.CLOSED);
-
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket1.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents.getFirst().getEventType()).isEqualTo(TicketEventType.STATUS_CHANGED);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("oldStatus", TicketStatus.RESOLVED.name());
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.CLOSED);
     }
 
     @Test
-    void shouldThrowExceptionWhenTryingToCloseTicketThatIsNotResolved() {
-        final TicketStatus currentTicketStatus = ticket1.getStatus();
-
-        InvalidStatusTransitionException actualException = assertThrows(InvalidStatusTransitionException.class, () -> {
-            ticketService.closeByCustomer(ticket1.getId(), customer.getId());
-        });
-
-        assertThat(actualException).hasMessage(new InvalidStatusTransitionException(currentTicketStatus, TicketStatus.CLOSED).getMessage());
-    }
-
-    @Test
-    void shouldChangeTicketPrioritySuccessfully() {
-        final TicketPriority currentPriority = ticket1.getPriority();
-
-        ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.CRITICAL);
+    @WithMockUser(authorities = "CUSTOMER")
+    void shouldNotRecordNewEventWhenTicketIsAlreadyClosed() {
+        ticket1.setStatus(TicketStatus.CLOSED);
+        ticketRepository.save(ticket1);
         flushAndClear();
 
-        TicketEntity actualTicket = ticketRepo.findById(ticket1.getId()).orElseThrow();
-        assertThat(actualTicket.getPriority()).isEqualTo(TicketPriority.CRITICAL);
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
 
-        List<TicketEventEntity> ticketEvents = eventRepo.findAllByTicketId(ticket1.getId(), Sort.by(Sort.Direction.DESC, "id"));
-        assertThat(ticketEvents.getFirst().getEventType()).isEqualTo(TicketEventType.PRIORITY_CHANGED);
-        assertThat(ticketEvents.getFirst().getPayload()).containsEntry("oldPriority", currentPriority.name());
+        ticketService.closeByCustomer(ticket1.getId(), customer.getId());
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "CUSTOMER")
+    void shouldThrowInvalidStatusTransitionExceptionWhenCustomerClosesTicketThatIsNotResolved() {
+        assertThatThrownBy(() -> ticketService.closeByCustomer(ticket1.getId(), customer.getId()))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessage(new InvalidStatusTransitionException(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED).getMessage());
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldChangePriorityAndRecordEventWhenActorCanModifyTicket() {
+        ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.LOW);
+        flushAndClear();
+
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        assertThat(updated.getPriority()).isEqualTo(TicketPriority.LOW);
+
+        boolean priorityEventExists = eventRepository
+                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
+                .stream()
+                .findFirst()
+                .filter(e -> e.getEventType() == TicketEventType.PRIORITY_CHANGED)
+                .isPresent();
+
+        assertThat(priorityEventExists).isTrue();
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldNotRecordNewEventWhenPriorityIsAlreadyTheSame() {
+        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.HIGH);
+
+        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+
+        assertThat(eventCountAfter).isEqualTo(eventCountBefore);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldThrowAccessDeniedExceptionWhenActorIsNotAssigneeOrAdmin() {
+        assertThatThrownBy(() -> ticketService.changePriority(ticket2.getId(), agent.getId(), TicketPriority.LOW))
+                .isInstanceOf(TicketFlowAccessDeniedException.class);
     }
 
     @Test
@@ -290,7 +509,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
                 assertThat(actualException.getCause()).isInstanceOf(OptimisticLockException.class);
 
-                TicketEntity actualTicket = ticketRepo.findById(ticketId).orElseThrow();
+                TicketEntity actualTicket = ticketRepository.findById(ticketId).orElseThrow();
                 assertThat(actualTicket.getPriority()).isEqualTo(TicketPriority.CRITICAL);
                 assertThat(actualTicket.getVersion()).isEqualTo(1);
             } catch (Throwable t) {
