@@ -93,7 +93,7 @@ public class ControllerExceptionHandler {
         if (referer != null) {
             try {
                 String path = URI.create(referer).getPath();
-                boolean isSafePath = ALLOWED_REDIRECT_PREFIXES.stream()
+                boolean isSafePath = path != null && ALLOWED_REDIRECT_PREFIXES.stream()
                         .anyMatch(path::startsWith);
                 if (isSafePath) {
                     return "redirect:" + path;
