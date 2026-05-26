@@ -1,7 +1,6 @@
 package com.rolliedev.ticketflow.unit.service;
 
 import com.querydsl.core.types.Predicate;
-import com.querydsl.core.types.dsl.Expressions;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
@@ -21,6 +20,7 @@ import com.rolliedev.ticketflow.querydsl.TicketPredicateBuilder;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
+import com.rolliedev.ticketflow.service.SlaService;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import com.rolliedev.ticketflow.service.TicketService;
 import org.junit.jupiter.api.Test;
@@ -28,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -47,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -73,6 +75,9 @@ class TicketServiceTest {
     private TicketPredicateBuilder ticketPredicateBuilder;
     @Spy
     private AccessPolicy accessPolicy;
+    @Mock
+    private SlaService slaService;
+
     @InjectMocks
     private TicketService ticketService;
 
@@ -126,8 +131,7 @@ class TicketServiceTest {
 
         ticketService.findAll(searchFilter, pageable, currentUser);
 
-        Predicate expectedPredicate = Expressions.asBoolean(true).isTrue();
-        verify(ticketRepository).findAll(eq(expectedPredicate), eq(pageable));
+        verify(ticketRepository).findAll(any(Predicate.class), eq(pageable));
         verify(ticketResponseMapper).map(any(TicketEntity.class));
     }
 
@@ -178,6 +182,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).save(any(TicketEntity.class));
+        verify(slaService).initializeSlaForNewTicket(ticket);
         verify(eventService).recordCreatedEvent(ticket, creator);
         verify(ticketResponseMapper).map(ticket);
     }
@@ -195,7 +200,7 @@ class TicketServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage(ResourceNotFoundException.user(CUSTOMER_ID).getMessage());
 
-        verifyNoInteractions(ticketRepository, eventService, ticketResponseMapper);
+        verifyNoInteractions(ticketRepository, slaService, eventService, ticketResponseMapper);
     }
 
     @Test
@@ -307,17 +312,16 @@ class TicketServiceTest {
         verifyNoInteractions(eventService);
     }
 
-    @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"NEW", "WAITING_CUSTOMER", "RESOLVED"}, mode = EnumSource.Mode.INCLUDE)
-    void shouldStartProgressOnTicketWithGivenStatusesSuccessfully(TicketStatus currentStatus) {
+    @Test
+    void shouldStartProgressFromNewTicketSuccessfully() {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
-                .status(currentStatus)
-                .resolvedAt(currentStatus == TicketStatus.RESOLVED ? Instant.now() : null)
+                .status(TicketStatus.NEW)
                 .build();
 
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
@@ -326,13 +330,81 @@ class TicketServiceTest {
         ticketService.startProgress(TICKET_ID, AGENT_ID);
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
-        if (currentStatus == TicketStatus.RESOLVED) {
-            assertThat(ticket.getResolvedAt()).isNull();
-        }
+        assertThat(ticket.getAssignedTo()).isEqualTo(agent);
 
-        verify(userRepository).findById(AGENT_ID);
-        verify(ticketRepository).findById(TICKET_ID);
-        verify(eventService).recordStatusChangedEvent(ticket, agent, currentStatus, TicketStatus.IN_PROGRESS);
+        verify(eventService).recordAssignedEvent(ticket, agent, null, agent);
+        verify(eventService).recordStatusChangedEvent(ticket, agent, TicketStatus.NEW, TicketStatus.IN_PROGRESS);
+
+        verifyNoInteractions(slaService);
+    }
+
+    @Test
+    void shouldStartProgressFromWaitingCustomerAndResumeResolutionSla() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.WAITING_CUSTOMER)
+                .assignedTo(agent)
+                .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.startProgress(TICKET_ID, AGENT_ID);
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+
+        verify(slaService).resumeResolutionSlaClock(eq(ticket), any(Instant.class));
+        verify(slaService, never()).handleResolvedTicketReopenedByInternalUser(any(), any(), any());
+
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                agent,
+                TicketStatus.WAITING_CUSTOMER,
+                TicketStatus.IN_PROGRESS
+        );
+    }
+
+    @Test
+    void shouldStartProgressFromResolvedAndHandleInternalReopen() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.RESOLVED)
+                .assignedTo(agent)
+                .resolvedAt(Instant.parse("2026-05-20T10:00:00Z"))
+                .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.startProgress(TICKET_ID, AGENT_ID);
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(ticket.getResolvedAt()).isNull();
+
+        verify(slaService).handleResolvedTicketReopenedByInternalUser(
+                eq(ticket),
+                eq(agent),
+                any(Instant.class)
+        );
+
+        verify(slaService, never()).resumeResolutionSlaClock(any(), any());
+
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                agent,
+                TicketStatus.RESOLVED,
+                TicketStatus.IN_PROGRESS
+        );
     }
 
     @Test
@@ -341,6 +413,7 @@ class TicketServiceTest {
                 .id(99)
                 .role(Role.AGENT)
                 .build();
+
         TicketEntity assignedTicket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.NEW)
@@ -359,7 +432,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(99);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -384,7 +457,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -406,21 +479,21 @@ class TicketServiceTest {
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
-    void shouldChangeTicketStatusToWaitingCustomerWhenAgentRequestsCustomerInfo() {
+    void shouldRequestCustomerInfoCountAsFirstResponseAndPauseResolutionSla() {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
 
-        TicketStatus currentTicketStatus = TicketStatus.IN_PROGRESS;
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
-                .status(currentTicketStatus)
+                .status(TicketStatus.IN_PROGRESS)
                 .assignedTo(agent)
+                .firstRespondedAt(null)
                 .build();
 
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
@@ -429,10 +502,53 @@ class TicketServiceTest {
         ticketService.requestCustomerInfo(ticket.getId(), agent.getId());
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.WAITING_CUSTOMER);
+        assertThat(ticket.getFirstRespondedAt()).isNotNull();
 
-        verify(userRepository).findById(AGENT_ID);
-        verify(ticketRepository).findById(TICKET_ID);
-        verify(eventService).recordStatusChangedEvent(ticket, agent, currentTicketStatus, TicketStatus.WAITING_CUSTOMER);
+        ArgumentCaptor<Instant> requestedAtCaptor = ArgumentCaptor.forClass(Instant.class);
+
+        verify(slaService).evaluateFirstResponse(ticket, agent);
+        verify(slaService).pauseResolutionSlaClock(
+                eq(ticket),
+                eq(agent),
+                requestedAtCaptor.capture()
+        );
+
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(requestedAtCaptor.getValue());
+
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                agent,
+                TicketStatus.IN_PROGRESS,
+                TicketStatus.WAITING_CUSTOMER
+        );
+    }
+
+    @Test
+    void shouldRequestCustomerInfoWithoutReevaluatingFirstResponseWhenAlreadyResponded() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        Instant firstRespondedAt = Instant.parse("2026-05-20T09:00:00Z");
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
+                .assignedTo(agent)
+                .firstRespondedAt(firstRespondedAt)
+                .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.requestCustomerInfo(ticket.getId(), agent.getId());
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.WAITING_CUSTOMER);
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(firstRespondedAt);
+
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
+        verify(slaService).pauseResolutionSlaClock(eq(ticket), eq(agent), any(Instant.class));
     }
 
     @Test
@@ -459,7 +575,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(anotherAgent.getId());
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService, ticketResponseMapper);
+        verifyNoInteractions(slaService, eventService, ticketResponseMapper);
     }
 
     @ParameterizedTest
@@ -484,7 +600,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -505,19 +621,21 @@ class TicketServiceTest {
 
         verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
-    void shouldResolveTicketSuccessfully() {
+    void shouldResolveInProgressTicketAndPauseResolutionSla() {
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.IN_PROGRESS)
                 .assignedTo(agent)
+                .firstRespondedAt(null)
                 .build();
 
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
@@ -527,10 +645,58 @@ class TicketServiceTest {
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(ticket.getResolvedAt()).isNotNull();
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(ticket.getResolvedAt());
 
-        verify(userRepository).findById(AGENT_ID);
-        verify(ticketRepository).findById(TICKET_ID);
-        verify(eventService).recordStatusChangedEvent(ticket, agent, TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED);
+        verify(slaService).evaluateFirstResponse(ticket, agent);
+        verify(slaService, never()).resumeResolutionSlaClock(any(), any());
+        verify(slaService).pauseResolutionSlaClock(eq(ticket), eq(agent), eq(ticket.getResolvedAt()));
+
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                agent,
+                TicketStatus.IN_PROGRESS,
+                TicketStatus.RESOLVED
+        );
+    }
+
+    @Test
+    void shouldResolveWaitingCustomerTicketByResumingThenPausingResolutionSla() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        Instant firstRespondedAt = Instant.parse("2026-05-20T09:00:00Z");
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.WAITING_CUSTOMER)
+                .assignedTo(agent)
+                .firstRespondedAt(firstRespondedAt)
+                .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        ticketService.resolve(ticket.getId(), agent.getId());
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        assertThat(ticket.getResolvedAt()).isNotNull();
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(firstRespondedAt);
+
+        InOrder inOrder = inOrder(slaService);
+
+        inOrder.verify(slaService).resumeResolutionSlaClock(eq(ticket), eq(ticket.getResolvedAt()));
+        inOrder.verify(slaService).pauseResolutionSlaClock(eq(ticket), eq(agent), eq(ticket.getResolvedAt()));
+
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
+
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                agent,
+                TicketStatus.WAITING_CUSTOMER,
+                TicketStatus.RESOLVED
+        );
     }
 
     @ParameterizedTest
@@ -556,7 +722,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(ADMIN_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -578,7 +744,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -602,7 +768,13 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.RESOLVED, TicketStatus.CLOSED);
+        verify(eventService).recordStatusChangedEvent(
+                ticket,
+                customer,
+                TicketStatus.RESOLVED,
+                TicketStatus.CLOSED
+        );
+        verify(slaService).finalizeResolutionSlaOnClose(ticket);
     }
 
     @Test
@@ -628,7 +800,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @ParameterizedTest
@@ -654,7 +826,7 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
     }
 
     @Test
@@ -676,7 +848,61 @@ class TicketServiceTest {
 
         verify(userRepository).findById(CUSTOMER_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(slaService, eventService);
+    }
+
+    @Test
+    void shouldCloseResolvedTicketsOlderThanThreshold() {
+        Instant threshold = Instant.parse("2026-05-20T10:00:00Z");
+
+        TicketEntity ticket1 = TicketEntity.builder()
+                .id(1L)
+                .status(TicketStatus.RESOLVED)
+                .build();
+
+        TicketEntity ticket2 = TicketEntity.builder()
+                .id(2L)
+                .status(TicketStatus.RESOLVED)
+                .build();
+
+        doReturn(List.of(ticket1, ticket2))
+                .when(ticketRepository).findResolvedTicketsOlderThan(threshold);
+
+        int closedCount = ticketService.closeResolvedTicketsOlderThan(threshold);
+
+        assertThat(closedCount).isEqualTo(2);
+        assertThat(ticket1.getStatus()).isEqualTo(TicketStatus.CLOSED);
+        assertThat(ticket2.getStatus()).isEqualTo(TicketStatus.CLOSED);
+
+        verify(eventService).recordStatusChangedEvent(ticket1, TicketStatus.RESOLVED, TicketStatus.CLOSED);
+        verify(eventService).recordStatusChangedEvent(ticket2, TicketStatus.RESOLVED, TicketStatus.CLOSED);
+
+        verify(slaService).finalizeResolutionSlaOnClose(ticket1);
+        verify(slaService).finalizeResolutionSlaOnClose(ticket2);
+    }
+
+    @Test
+    void shouldReturnZeroWhenNoResolvedTicketsEligibleForAutoClose() {
+        Instant threshold = Instant.parse("2026-05-20T10:00:00Z");
+
+        doReturn(Collections.emptyList())
+                .when(ticketRepository).findResolvedTicketsOlderThan(threshold);
+
+        int closedCount = ticketService.closeResolvedTicketsOlderThan(threshold);
+
+        assertThat(closedCount).isZero();
+
+        verify(ticketRepository).findResolvedTicketsOlderThan(threshold);
+        verifyNoInteractions(eventService, slaService);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenAutoCloseThresholdIsNull() {
+        assertThatThrownBy(() -> ticketService.closeResolvedTicketsOlderThan(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Auto-close threshold cannot be null");
+
+        verifyNoInteractions(ticketRepository, eventService, slaService);
     }
 
     @Test
@@ -704,6 +930,7 @@ class TicketServiceTest {
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
         verify(eventService).recordPriorityChangedEvent(ticket, agent, ticketPriority, TicketPriority.HIGH);
+        verify(slaService).updateDeadlinesAfterPriorityChange(eq(ticket), any(Instant.class));
     }
 
     @Test
@@ -726,6 +953,32 @@ class TicketServiceTest {
 
         verify(userRepository).findById(AGENT_ID);
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(eventService);
+        verifyNoInteractions(eventService, slaService);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenTryingToChangePriorityOfClosedTicket() {
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.CLOSED)
+                .priority(TicketPriority.MEDIUM)
+                .assignedTo(agent)
+                .build();
+
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+
+        assertThatThrownBy(() -> ticketService.changePriority(ticket.getId(), agent.getId(), TicketPriority.HIGH))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessage("Closed tickets cannot be modified");
+
+        assertThat(ticket.getPriority()).isEqualTo(TicketPriority.MEDIUM);
+
+        verifyNoInteractions(accessPolicy, eventService, slaService);
     }
 }

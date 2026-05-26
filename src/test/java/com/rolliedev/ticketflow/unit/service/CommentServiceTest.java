@@ -16,6 +16,7 @@ import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import com.rolliedev.ticketflow.service.CommentService;
+import com.rolliedev.ticketflow.service.SlaService;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -39,9 +41,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -54,6 +56,7 @@ class CommentServiceTest {
     private static final Integer CUSTOMER_ID = 2;
     private static final Long COMMENT_ID = 10L;
     private static final String COMMENT_TEXT = "test comment";
+    private static final Instant COMMENT_CREATED_AT = Instant.parse("2026-05-20T10:00:00Z");
 
     @Mock
     private TicketRepository ticketRepository;
@@ -65,8 +68,11 @@ class CommentServiceTest {
     private TicketEventService eventService;
     @Mock
     private CommentResponseMapper commentMapper;
-    @Mock
+    @Spy
     private AccessPolicy accessPolicy;
+    @Mock
+    private SlaService slaService;
+
     @InjectMocks
     private CommentService commentService;
 
@@ -86,8 +92,10 @@ class CommentServiceTest {
         Page<CommentResponse> actualResult = commentService.findAllBy(TICKET_ID, pageable);
 
         assertThat(actualResult.getContent()).containsExactly(response1, response2);
+
         verify(commentRepository).findAllByTicketIdOrderByCreatedAtAsc(TICKET_ID, pageable);
-        verify(commentMapper, times(2)).map(any(TicketCommentEntity.class));
+        verify(commentMapper).map(comment1);
+        verify(commentMapper).map(comment2);
     }
 
     @Test
@@ -101,29 +109,33 @@ class CommentServiceTest {
 
         assertThat(actualResult.getContent()).isEmpty();
         assertThat(actualResult.getTotalElements()).isZero();
+
         verify(commentRepository).findAllByTicketIdOrderByCreatedAtAsc(TICKET_ID, pageable);
         verifyNoInteractions(commentMapper);
     }
 
     @Test
-    void shouldCreateCommentAndRecordEventSuccessfully() {
+    void shouldCreateAgentCommentCountAsFirstResponseAndRecordEventSuccessfully() {
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.IN_PROGRESS)
+                .firstRespondedAt(null)
                 .build();
+
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
                 .build();
-        TicketCommentEntity comment = TicketCommentEntity.builder()
-                .id(COMMENT_ID)
-                .build();
+
+        TicketCommentEntity comment = savedComment();
         CommentResponse commentResponse = mock(CommentResponse.class);
 
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+
         ArgumentCaptor<TicketCommentEntity> captor = ArgumentCaptor.forClass(TicketCommentEntity.class);
         doReturn(comment).when(commentRepository).save(captor.capture());
+
         doReturn(commentResponse).when(commentMapper).map(comment);
 
         CommentResponse actualResult = commentService.create(TICKET_ID, AGENT_ID, COMMENT_TEXT);
@@ -132,8 +144,45 @@ class CommentServiceTest {
         assertThat(captor.getValue().getTicket()).isEqualTo(ticket);
         assertThat(captor.getValue().getAuthor()).isEqualTo(agent);
         assertThat(captor.getValue().getBody()).isEqualTo(COMMENT_TEXT);
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(COMMENT_CREATED_AT);
+
         verify(commentRepository).save(any(TicketCommentEntity.class));
-        verify(eventService).recordCommentedEvent(ticket, agent, comment.getId());
+        verify(eventService).recordCommentedEvent(ticket, agent, COMMENT_ID);
+        verify(slaService).evaluateFirstResponse(ticket, agent);
+        verify(slaService, never()).resumeResolutionSlaClock(any(), any());
+        verify(eventService, never()).recordStatusChangedEvent(any(), any(), any(), any());
+        verify(commentMapper).map(comment);
+    }
+
+    @Test
+    void shouldNotEvaluateFirstResponseWhenAgentAddsCommentAfterFirstResponseAlreadyExists() {
+        Instant firstRespondedAt = Instant.parse("2026-05-20T09:00:00Z");
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
+                .firstRespondedAt(firstRespondedAt)
+                .build();
+
+        UserEntity agent = UserEntity.builder()
+                .id(AGENT_ID)
+                .role(Role.AGENT)
+                .build();
+
+        TicketCommentEntity comment = savedComment();
+
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+        doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
+        doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
+
+        commentService.create(TICKET_ID, AGENT_ID, COMMENT_TEXT);
+
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(firstRespondedAt);
+
+        verify(commentRepository).save(any(TicketCommentEntity.class));
+        verify(eventService).recordCommentedEvent(ticket, agent, COMMENT_ID);
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
+        verify(slaService, never()).resumeResolutionSlaClock(any(), any());
     }
 
     @Test
@@ -150,7 +199,7 @@ class CommentServiceTest {
                 .hasMessage("Closed tickets cannot be modified");
 
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(userRepository, accessPolicy, commentRepository, eventService, commentMapper);
+        verifyNoInteractions(userRepository, accessPolicy, commentRepository, slaService, eventService, commentMapper);
     }
 
     @Test
@@ -162,7 +211,7 @@ class CommentServiceTest {
                 .hasMessage(ResourceNotFoundException.ticket(TICKET_ID).getMessage());
 
         verify(ticketRepository).findById(TICKET_ID);
-        verifyNoInteractions(userRepository, accessPolicy, commentRepository, eventService, commentMapper);
+        verifyNoInteractions(userRepository, accessPolicy, commentRepository, slaService, eventService, commentMapper);
     }
 
     @Test
@@ -170,8 +219,12 @@ class CommentServiceTest {
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.IN_PROGRESS)
-                .createdBy(UserEntity.builder().id(99).role(Role.CUSTOMER).build())
+                .createdBy(UserEntity.builder()
+                        .id(99)
+                        .role(Role.CUSTOMER)
+                        .build())
                 .build();
+
         UserEntity customer = UserEntity.builder()
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
@@ -179,8 +232,6 @@ class CommentServiceTest {
 
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-        doThrow(new TicketFlowAccessDeniedException("Customers cannot add comments to tickets they did not create"))
-                .when(accessPolicy).requireTicketOwnerIfCustomer(customer, ticket, "Customers cannot add comments to tickets they did not create");
 
         assertThatThrownBy(() -> commentService.create(TICKET_ID, CUSTOMER_ID, COMMENT_TEXT))
                 .isInstanceOf(TicketFlowAccessDeniedException.class)
@@ -188,57 +239,24 @@ class CommentServiceTest {
 
         verify(ticketRepository).findById(TICKET_ID);
         verify(userRepository).findById(CUSTOMER_ID);
-        verifyNoInteractions(commentRepository, eventService, commentMapper);
+        verifyNoInteractions(commentRepository, slaService, eventService, commentMapper);
     }
 
     @Test
-    @DisplayName("When customer adds comment on ticket with WAITING_CUSTOMER status, it should move ticket back to IN_PROGRESS state and record status change event")
-    void shouldChangeStatusToInProgressAndRecordStatusChangeEventWhenCustomerAddCommentToTicketWithWaitingCustomerStatus() {
+    @DisplayName("When customer adds comment on ticket with WAITING_CUSTOMER status, it should move ticket back to IN_PROGRESS state, resume SLA and record status change event")
+    void shouldChangeStatusToInProgressResumeResolutionSlaAndRecordStatusChangeEventWhenCustomerAddCommentToTicketWithWaitingCustomerStatus() {
         UserEntity customer = UserEntity.builder()
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(TicketStatus.WAITING_CUSTOMER)
                 .createdBy(customer)
                 .build();
-        TicketCommentEntity comment = TicketCommentEntity.builder()
-                .id(COMMENT_ID)
-                .build();
 
-        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
-        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
-        doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
-
-        commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
-
-        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
-
-        verify(ticketRepository).findById(TICKET_ID);
-        verify(userRepository).findById(CUSTOMER_ID);
-        verify(commentRepository).save(any(TicketCommentEntity.class));
-        verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
-        verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.WAITING_CUSTOMER, TicketStatus.IN_PROGRESS);
-        verify(commentMapper).map(comment);
-    }
-
-    @Test
-    @DisplayName("When customer adds comment on ticket with RESOLVED status, it should move ticket back to IN_PROGRESS state and record status change event")
-    void shouldChangeStatusToInProgressAndRecordStatusChangeEventWhenCustomerAddCommentToTicketWithResolvedStatus() {
-        UserEntity customer = UserEntity.builder()
-                .id(CUSTOMER_ID)
-                .role(Role.CUSTOMER)
-                .build();
-        TicketEntity ticket = TicketEntity.builder()
-                .id(TICKET_ID)
-                .status(TicketStatus.RESOLVED)
-                .createdBy(customer)
-                .resolvedAt(Instant.now())
-                .build();
-        TicketCommentEntity comment = TicketCommentEntity.builder()
-                .id(COMMENT_ID)
-                .build();
+        TicketCommentEntity comment = savedComment();
 
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
@@ -248,11 +266,51 @@ class CommentServiceTest {
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(ticket.getResolvedAt()).isNull();
+        assertThat(ticket.getFirstRespondedAt()).isNull();
 
         verify(ticketRepository).findById(TICKET_ID);
         verify(userRepository).findById(CUSTOMER_ID);
         verify(commentRepository).save(any(TicketCommentEntity.class));
-        verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
+        verify(eventService).recordCommentedEvent(ticket, customer, COMMENT_ID);
+        verify(slaService).resumeResolutionSlaClock(ticket, COMMENT_CREATED_AT);
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
+        verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.WAITING_CUSTOMER, TicketStatus.IN_PROGRESS);
+        verify(commentMapper).map(comment);
+    }
+
+    @Test
+    @DisplayName("When customer adds comment on ticket with RESOLVED status, it should move ticket back to IN_PROGRESS state, clear resolvedAt, resume SLA and record status change event")
+    void shouldChangeStatusToInProgressClearResolvedAtResumeResolutionSlaAndRecordStatusChangeEventWhenCustomerAddCommentToTicketWithResolvedStatus() {
+        UserEntity customer = UserEntity.builder()
+                .id(CUSTOMER_ID)
+                .role(Role.CUSTOMER)
+                .build();
+
+        TicketEntity ticket = TicketEntity.builder()
+                .id(TICKET_ID)
+                .status(TicketStatus.RESOLVED)
+                .createdBy(customer)
+                .resolvedAt(Instant.parse("2026-05-20T09:00:00Z"))
+                .build();
+
+        TicketCommentEntity comment = savedComment();
+
+        doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
+        doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
+        doReturn(comment).when(commentRepository).save(any(TicketCommentEntity.class));
+
+        commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(ticket.getResolvedAt()).isNull();
+        assertThat(ticket.getFirstRespondedAt()).isNull();
+
+        verify(ticketRepository).findById(TICKET_ID);
+        verify(userRepository).findById(CUSTOMER_ID);
+        verify(commentRepository).save(any(TicketCommentEntity.class));
+        verify(eventService).recordCommentedEvent(ticket, customer, COMMENT_ID);
+        verify(slaService).resumeResolutionSlaClock(ticket, COMMENT_CREATED_AT);
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
         verify(eventService).recordStatusChangedEvent(ticket, customer, TicketStatus.RESOLVED, TicketStatus.IN_PROGRESS);
         verify(commentMapper).map(comment);
     }
@@ -264,14 +322,14 @@ class CommentServiceTest {
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .status(ticketStatus)
                 .createdBy(customer)
                 .build();
-        TicketCommentEntity comment = TicketCommentEntity.builder()
-                .id(COMMENT_ID)
-                .build();
+
+        TicketCommentEntity comment = savedComment();
 
         doReturn(Optional.of(customer)).when(userRepository).findById(CUSTOMER_ID);
         doReturn(Optional.of(ticket)).when(ticketRepository).findById(TICKET_ID);
@@ -279,11 +337,15 @@ class CommentServiceTest {
 
         commentService.create(ticket.getId(), customer.getId(), COMMENT_TEXT);
 
+        assertThat(ticket.getStatus()).isEqualTo(ticketStatus);
+
         verify(ticketRepository).findById(TICKET_ID);
         verify(userRepository).findById(CUSTOMER_ID);
         verify(commentRepository).save(any(TicketCommentEntity.class));
-        verify(eventService).recordCommentedEvent(ticket, customer, comment.getId());
+        verify(eventService).recordCommentedEvent(ticket, customer, COMMENT_ID);
         verify(commentMapper).map(comment);
+        verify(slaService, never()).resumeResolutionSlaClock(any(), any());
+        verify(slaService, never()).evaluateFirstResponse(any(), any());
         verifyNoMoreInteractions(eventService);
     }
 
@@ -293,10 +355,13 @@ class CommentServiceTest {
                 .id(CUSTOMER_ID)
                 .role(Role.CUSTOMER)
                 .build();
+
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
                 .createdBy(customer)
                 .build();
+
         TicketCommentEntity comment = TicketCommentEntity.builder()
                 .id(COMMENT_ID)
                 .ticket(ticket)
@@ -332,9 +397,11 @@ class CommentServiceTest {
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
                 .build();
+
         TicketEntity anotherTicket = TicketEntity.builder()
                 .id(99L)
                 .build();
+
         TicketCommentEntity comment = TicketCommentEntity.builder()
                 .id(COMMENT_ID)
                 .ticket(ticket)
@@ -357,6 +424,7 @@ class CommentServiceTest {
                 .id(TICKET_ID)
                 .status(TicketStatus.CLOSED)
                 .build();
+
         TicketCommentEntity comment = TicketCommentEntity.builder()
                 .id(COMMENT_ID)
                 .ticket(ticket)
@@ -377,7 +445,9 @@ class CommentServiceTest {
     void shouldThrowExceptionWhenUserWhoIsNotAdminNorAuthorOfCommentTryToDeleteComment() {
         TicketEntity ticket = TicketEntity.builder()
                 .id(TICKET_ID)
+                .status(TicketStatus.IN_PROGRESS)
                 .build();
+
         TicketCommentEntity comment = TicketCommentEntity.builder()
                 .id(COMMENT_ID)
                 .ticket(ticket)
@@ -385,6 +455,7 @@ class CommentServiceTest {
                         .id(CUSTOMER_ID)
                         .build())
                 .build();
+
         UserEntity agent = UserEntity.builder()
                 .id(AGENT_ID)
                 .role(Role.AGENT)
@@ -392,8 +463,6 @@ class CommentServiceTest {
 
         doReturn(Optional.of(comment)).when(commentRepository).findWithTicketById(COMMENT_ID);
         doReturn(Optional.of(agent)).when(userRepository).findById(AGENT_ID);
-        doThrow(new TicketFlowAccessDeniedException("Only admins or the comment author can delete a comment"))
-                .when(accessPolicy).requireAdminOrCommentAuthor(agent, comment, "Only admins or the comment author can delete a comment");
 
         assertThatThrownBy(() -> commentService.delete(TICKET_ID, COMMENT_ID, AGENT_ID))
                 .isInstanceOf(TicketFlowAccessDeniedException.class)
@@ -403,5 +472,14 @@ class CommentServiceTest {
         verify(userRepository).findById(AGENT_ID);
         verifyNoMoreInteractions(commentRepository);
         verifyNoInteractions(eventService);
+    }
+
+    private TicketCommentEntity savedComment() {
+        TicketCommentEntity comment = mock(TicketCommentEntity.class);
+
+        lenient().when(comment.getId()).thenReturn(COMMENT_ID);
+        lenient().when(comment.getCreatedAt()).thenReturn(COMMENT_CREATED_AT);
+
+        return comment;
     }
 }

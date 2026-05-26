@@ -79,7 +79,7 @@ class UserRestControllerTest {
 
     @Test
     void shouldReturnEmptyPageWhenNoUsersExist() throws Exception {
-        PageImpl<Object> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+        PageImpl<UserResponse> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
 
         doReturn(emptyPage).when(userService).findAll(any(Pageable.class));
 

@@ -10,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.core.IsEqual.equalTo;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -213,23 +214,34 @@ public class MvcControllersIT extends AbstractRestIT {
                         .with(user(new TicketFlowUserDetails(admin))))
                 .andExpect(status().isOk())
                 .andExpect(view().name("ticket/list"))
-                .andExpect(model().attributeExists("page", "filter", "statuses", "priorities"));
+                .andExpect(model().attributeExists(
+                        "page", "filter", "filterQueryParams", "statuses",
+                        "priorities", "assignees", "responseSlaStatuses", "resolutionSlaStatuses"
+                ));
     }
 
     @Test
-    void shouldIncludeAssigneesInModelWhenCalledByInternalUser() throws Exception {
+    void shouldIncludeInternalFiltersInModelWhenCalledByInternalUser() throws Exception {
         mockMvc.perform(get("/tickets")
                         .with(user(new TicketFlowUserDetails(agent))))
                 .andExpect(status().isOk())
-                .andExpect(model().attributeExists("assignees"));
+                .andExpect(model().attributeExists(
+                        "assignees",
+                        "responseSlaStatuses",
+                        "resolutionSlaStatuses"
+                ));
     }
 
     @Test
-    void shouldNotIncludeAssigneesInModelWhenCalledByCustomer() throws Exception {
+    void shouldNotIncludeInternalFiltersInModelWhenCalledByCustomer() throws Exception {
         mockMvc.perform(get("/tickets")
                         .with(user(new TicketFlowUserDetails(customer))))
                 .andExpect(status().isOk())
-                .andExpect(model().attributeDoesNotExist("assignees"));
+                .andExpect(model().attributeDoesNotExist(
+                        "assignees",
+                        "responseSlaStatuses",
+                        "resolutionSlaStatuses"
+                ));
     }
 
     @Test
@@ -238,7 +250,8 @@ public class MvcControllersIT extends AbstractRestIT {
                         .with(user(new TicketFlowUserDetails(admin))))
                 .andExpect(status().isOk())
                 .andExpect(view().name("ticket/detail"))
-                .andExpect(model().attributeExists("ticket", "comments", "allowedTransitions"));
+                .andExpect(model().attributeExists("ticket", "comments", "allowedTransitions"))
+                .andExpect(model().attribute("isInternalUser", equalTo(true)));
     }
 
     @Test
@@ -366,7 +379,7 @@ public class MvcControllersIT extends AbstractRestIT {
     @Test
     void shouldRedirectToTicketWhenCommentIsDeletedSuccessfully() throws Exception {
         mockMvc.perform(post("/tickets/{ticketId}/comments/{commentId}/delete",
-                        ticket1.getId(), 1L)
+                        ticket1.getId(), 2L)
                         .with(csrf())
                         .with(user(new TicketFlowUserDetails(customer))))
                 .andExpect(status().is3xxRedirection())

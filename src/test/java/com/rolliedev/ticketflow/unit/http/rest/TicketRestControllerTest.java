@@ -8,7 +8,9 @@ import com.rolliedev.ticketflow.dto.TicketEventResponse;
 import com.rolliedev.ticketflow.dto.TicketResponse;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
+import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.http.rest.TicketRestController;
 import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
 import com.rolliedev.ticketflow.service.TicketEventService;
@@ -26,6 +28,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -83,7 +87,11 @@ public class TicketRestControllerTest {
                         .with(user(adminDetails)))
                 .andExpectAll(
                         status().isOk(),
-                        jsonPath("$.id").value(TICKET_ID)
+                        jsonPath("$.id").value(TICKET_ID),
+                        jsonPath("$.responseSlaStatus").value(SlaStatus.ON_TRACK.name()),
+                        jsonPath("$.resolutionSlaStatus").value(SlaStatus.ON_TRACK.name()),
+                        jsonPath("$.firstResponseDeadline").exists(),
+                        jsonPath("$.resolutionDeadline").exists()
                 );
     }
 
@@ -333,8 +341,24 @@ public class TicketRestControllerTest {
     }
 
     private TicketResponse mockTicketResponse(Long id) {
-        return mock(TicketResponse.class, invocation ->
-                invocation.getMethod().getName().equals("id") ? id : null
+        Instant createdAt = Instant.parse("2026-05-10T10:00:00Z");
+
+        return new TicketResponse(
+                id,
+                "Test ticket",
+                "Test description",
+                TicketStatus.NEW,
+                TicketPriority.MEDIUM,
+                null,
+                null,
+                createdAt,
+                createdAt,
+                null,
+                null,
+                createdAt.plus(1, ChronoUnit.DAYS),
+                createdAt.plus(3, ChronoUnit.DAYS),
+                SlaStatus.ON_TRACK,
+                SlaStatus.ON_TRACK
         );
     }
 }

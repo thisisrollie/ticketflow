@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -71,7 +72,7 @@ public class CommentRestControllerTest {
         List<CommentResponse> commentResponses = List.of(mockCommentResponse(1L), mockCommentResponse(2L));
         PageImpl<CommentResponse> page = new PageImpl<>(commentResponses, PageRequest.of(0, 10), 2);
 
-        doReturn(Optional.of(TicketResponse.class)).when(ticketService).findById(eq(TICKET_ID), any());
+        doReturn(Optional.of(mock(TicketResponse.class))).when(ticketService).findById(eq(TICKET_ID), any());
         doReturn(page).when(commentService).findAllBy(eq(TICKET_ID), any());
 
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
@@ -86,7 +87,7 @@ public class CommentRestControllerTest {
 
     @Test
     void shouldReturnEmptyPageWhenTicketHasNoComments() throws Exception {
-        PageImpl<Object> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+        PageImpl<CommentResponse> emptyPage = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
 
         doReturn(Optional.of(TicketResponse.class)).when(ticketService).findById(eq(TICKET_ID), any());
         doReturn(emptyPage).when(commentService).findAllBy(eq(TICKET_ID), any());
@@ -114,7 +115,7 @@ public class CommentRestControllerTest {
         CreateCommentRequest request = new CreateCommentRequest("This is a comment");
         CommentResponse comment = mockCommentResponse(COMMENT_ID);
 
-        doReturn(comment).when(commentService).create(eq(TICKET_ID), any(), eq(request.getText()));
+        doReturn(comment).when(commentService).create(eq(TICKET_ID), eq(ADMIN_ID), eq(request.getText()));
 
         mockMvc.perform(post("/api/v1/tickets/{ticketId}/comments", TICKET_ID)
                         .with(user(adminDetails))
@@ -144,6 +145,8 @@ public class CommentRestControllerTest {
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}", TICKET_ID, COMMENT_ID)
                         .with(user(adminDetails)))
                 .andExpect(status().isNoContent());
+
+        verify(commentService).delete(eq(TICKET_ID), eq(COMMENT_ID), eq(ADMIN_ID));
     }
 
     @Test
