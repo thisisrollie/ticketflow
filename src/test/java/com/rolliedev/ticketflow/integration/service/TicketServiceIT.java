@@ -287,8 +287,10 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldResumeResolutionSlaAndExtendDeadlineWhenWaitingCustomerTicketIsStartedAgain() {
-        Instant originalDeadline = Instant.now().plus(2, ChronoUnit.DAYS);
-        Instant pausedAt = Instant.now().minus(2, ChronoUnit.HOURS);
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant pausedAt = now.minus(2, ChronoUnit.HOURS);
 
         ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
         ticket1.setAssignedTo(agent);
@@ -313,8 +315,10 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldClearResolvedAtAndResumeInternalWorkWithoutExtendingDeadlineWhenResolvedTicketIsStartedAgain() {
-        Instant originalDeadline = Instant.now().plus(2, ChronoUnit.DAYS);
-        Instant resolvedAt = Instant.now().minus(1, ChronoUnit.HOURS);
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant resolvedAt = now.minus(1, ChronoUnit.HOURS);
 
         ticket2.setStatus(TicketStatus.RESOLVED);
         ticket2.setAssignedTo(agent);
@@ -334,7 +338,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         assertThat(updated.getResolvedAt()).isNull();
         assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
         assertThat(updated.getResolutionSlaPausedAt()).isNull();
-        assertThat(updated.getResolutionDeadline()).isEqualTo(originalDeadline);
+        assertInstantsEqualAtDbPrecision(updated.getResolutionDeadline(), originalDeadline);
     }
 
     @Test
@@ -409,10 +413,10 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(updated.getResolvedAt()).isNotNull();
-        assertThat(updated.getFirstRespondedAt()).isEqualTo(updated.getResolvedAt());
+        assertInstantsEqualAtDbPrecision(updated.getFirstRespondedAt(), updated.getResolvedAt());
         assertThat(updated.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
         assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
-        assertThat(updated.getResolutionSlaPausedAt()).isEqualTo(updated.getResolvedAt());
+        assertInstantsEqualAtDbPrecision(updated.getResolutionSlaPausedAt(), updated.getResolvedAt());
 
         assertThat(latestEvent(ticket1.getId()).getEventType()).isEqualTo(TicketEventType.STATUS_CHANGED);
     }
@@ -420,14 +424,16 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldResolveWaitingCustomerTicketByResumingThenPausingResolutionSlaAgain() {
-        Instant originalDeadline = Instant.now().plus(2, ChronoUnit.DAYS);
-        Instant pausedAt = Instant.now().minus(2, ChronoUnit.HOURS);
-        Instant firstRespondedAt = Instant.now().minus(3, ChronoUnit.HOURS);
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant pausedAt = now.minus(2, ChronoUnit.HOURS);
+        Instant firstRespondedAt = now.minus(3, ChronoUnit.HOURS);
 
         ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
         ticket1.setAssignedTo(agent);
         ticket1.setFirstRespondedAt(firstRespondedAt);
-        ticket1.setFirstResponseDeadline(Instant.now().plus(1, ChronoUnit.DAYS));
+        ticket1.setFirstResponseDeadline(now.plus(1, ChronoUnit.DAYS));
         ticket1.setResponseSlaStatus(SlaStatus.MET);
         ticket1.setResolutionDeadline(originalDeadline);
         ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
@@ -443,9 +449,9 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(updated.getResolvedAt()).isNotNull();
-        assertThat(updated.getFirstRespondedAt()).isEqualTo(firstRespondedAt);
+        assertInstantsEqualAtDbPrecision(updated.getFirstRespondedAt(), firstRespondedAt);
         assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
-        assertThat(updated.getResolutionSlaPausedAt()).isEqualTo(updated.getResolvedAt());
+        assertInstantsEqualAtDbPrecision(updated.getResolutionSlaPausedAt(), updated.getResolvedAt());
         assertThat(updated.getResolutionDeadline()).isAfter(originalDeadline);
     }
 
@@ -453,7 +459,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @WithMockUser(authorities = "AGENT")
     void shouldNotRecordNewEventWhenTicketIsAlreadyResolved() {
         ticket1.setStatus(TicketStatus.RESOLVED);
-        ticket1.setResolvedAt(Instant.now());
+        ticket1.setResolvedAt(nowAtDbPrecision());
         ticketRepository.save(ticket1);
         flushAndClear();
 
@@ -469,11 +475,13 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     @WithMockUser(authorities = "CUSTOMER")
     void shouldCloseTicketAndMarkResolutionSlaAsMetWhenResolvedTicketIsClosedByCustomer() {
-        Instant resolvedAt = Instant.now().minus(1, ChronoUnit.HOURS);
+        Instant now = nowAtDbPrecision();
+
+        Instant resolvedAt = now.minus(1, ChronoUnit.HOURS);
 
         ticket1.setStatus(TicketStatus.RESOLVED);
         ticket1.setResolvedAt(resolvedAt);
-        ticket1.setResolutionDeadline(Instant.now().plus(2, ChronoUnit.DAYS));
+        ticket1.setResolutionDeadline(now.plus(2, ChronoUnit.DAYS));
         ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
         ticket1.setResolutionSlaPausedAt(resolvedAt);
         ticketRepository.save(ticket1);
@@ -634,7 +642,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
                 UserEntity user = DataUtils.getTransientUser("Lana", "Lang", Role.CUSTOMER);
                 setUpEm.persist(user);
 
-                Instant createdAt = Instant.now();
+                Instant createdAt = nowAtDbPrecision();
 
                 TicketEntity ticket = DataUtils.getTransientTicket(
                         "test_title",
@@ -714,7 +722,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     }
 
     private void prepareInProgressTicketWithActiveSlas(TicketEntity ticket) {
-        Instant now = Instant.now();
+        Instant now = nowAtDbPrecision();
 
         ticket.setStatus(TicketStatus.IN_PROGRESS);
         ticket.setAssignedTo(agent);
