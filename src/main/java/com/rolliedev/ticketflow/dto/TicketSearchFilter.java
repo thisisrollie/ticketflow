@@ -1,5 +1,6 @@
 package com.rolliedev.ticketflow.dto;
 
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import lombok.Builder;
@@ -14,12 +15,14 @@ public record TicketSearchFilter(String keyword,
                                  Integer creatorId,
                                  Integer assigneeId,
                                  LocalDate createdBefore,
-                                 LocalDate createdAfter) {
+                                 LocalDate createdAfter,
+                                 SlaStatus responseSlaStatus,
+                                 SlaStatus resolutionSlaStatus) {
 
     public String toQueryString() {
         UriComponentsBuilder builder = UriComponentsBuilder.newInstance();
 
-        if (keyword != null) {
+        if (keyword != null && !keyword.isBlank()) {
             builder.queryParam("keyword", keyword);
         }
         if (status != null) {
@@ -39,6 +42,12 @@ public record TicketSearchFilter(String keyword,
         }
         if (createdAfter != null) {
             builder.queryParam("createdAfter", createdAfter);
+        }
+        if (responseSlaStatus != null) {
+            builder.queryParam("responseSlaStatus", responseSlaStatus.name());
+        }
+        if (resolutionSlaStatus != null) {
+            builder.queryParam("resolutionSlaStatus", resolutionSlaStatus.name());
         }
 
         String query = builder.build().encode().toUriString();

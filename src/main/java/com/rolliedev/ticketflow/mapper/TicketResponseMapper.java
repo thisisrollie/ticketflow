@@ -23,7 +23,12 @@ public class TicketResponseMapper implements Mapper<TicketEntity, TicketResponse
                 object.getAssignedTo() != null ? userSummaryMapper.map(object.getAssignedTo()) : null,
                 object.getCreatedAt(),
                 object.getModifiedAt(),
-                object.getResolvedAt()
+                object.getResolvedAt(),
+                object.getFirstRespondedAt(),
+                object.getFirstResponseDeadline(),
+                object.getResolutionDeadline(),
+                object.getResponseSlaStatus(),
+                object.getResolutionSlaStatus()
         );
     }
 }

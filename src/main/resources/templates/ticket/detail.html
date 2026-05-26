@@ -123,6 +123,177 @@
         </div>
     </div>
 
+    <!-- SLA Tracking - Internal users -->
+    <div class="card mb-3" th:if="${isInternalUser}">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong><i class="bi bi-clock-history"></i> SLA Tracking</strong>
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+
+                <!-- First response SLA -->
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h3 class="h6 mb-0">First response SLA</h3>
+
+                            <span class="badge"
+                                  th:classappend="${ticket.responseSlaStatus() != null and ticket.responseSlaStatus().name() == 'MET'} ? ' bg-success' :
+                                              (${ticket.responseSlaStatus() != null and ticket.responseSlaStatus().name() == 'BREACHED'} ? ' bg-danger' :
+                                              (${ticket.responseSlaStatus() != null and ticket.responseSlaStatus().name() == 'ON_TRACK'} ? ' bg-primary' : ' bg-secondary'))"
+                                  th:text="${ticket.responseSlaStatus() != null ? ticket.responseSlaStatus() : 'N/A'}">
+                            ON_TRACK
+                        </span>
+                        </div>
+
+                        <div class="small text-muted mb-1">
+                            Deadline:
+                            <span th:if="${ticket.firstResponseDeadline() != null}"
+                                  th:text="${#temporals.format(ticket.firstResponseDeadline(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-18 14:00
+                        </span>
+                            <span th:if="${ticket.firstResponseDeadline() == null}">Not set</span>
+                        </div>
+
+                        <div class="small text-muted">
+                            First responded:
+                            <span th:if="${ticket.firstRespondedAt() != null}"
+                                  th:text="${#temporals.format(ticket.firstRespondedAt(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-18 13:30
+                        </span>
+                            <span th:if="${ticket.firstRespondedAt() == null}">Not yet</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resolution SLA -->
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h3 class="h6 mb-0">Resolution SLA</h3>
+
+                            <span class="badge"
+                                  th:classappend="${ticket.resolutionSlaStatus() != null and ticket.resolutionSlaStatus().name() == 'MET'} ? ' bg-success' :
+                                              (${ticket.resolutionSlaStatus() != null and ticket.resolutionSlaStatus().name() == 'BREACHED'} ? ' bg-danger' :
+                                              (${ticket.resolutionSlaStatus() != null and ticket.resolutionSlaStatus().name() == 'ON_TRACK'} ? ' bg-primary' : ' bg-secondary'))"
+                                  th:text="${ticket.resolutionSlaStatus() != null ? ticket.resolutionSlaStatus() : 'N/A'}">
+                            ON_TRACK
+                        </span>
+                        </div>
+
+                        <div class="small text-muted mb-1">
+                            Deadline:
+                            <span th:if="${ticket.resolutionDeadline() != null}"
+                                  th:text="${#temporals.format(ticket.resolutionDeadline(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-20 10:00
+                        </span>
+                            <span th:if="${ticket.resolutionDeadline() == null}">Not set</span>
+                        </div>
+
+                        <div class="small text-muted">
+                            Resolved:
+                            <span th:if="${ticket.resolvedAt() != null}"
+                                  th:text="${#temporals.format(ticket.resolvedAt(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-20 09:30
+                        </span>
+                            <span th:if="${ticket.resolvedAt() == null}">Not yet</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Service expectations - Customers -->
+    <div class="card mb-3" th:if="${!isInternalUser}">
+        <div class="card-header">
+            <strong><i class="bi bi-clock"></i> Service expectations</strong>
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+
+                <!-- First response -->
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100"
+                         th:with="responseStatus=${ticket.responseSlaStatus() != null ? ticket.responseSlaStatus().name() : 'N/A'},
+                              responseProvided=${ticket.firstRespondedAt() != null}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h3 class="h6 mb-0">First response</h3>
+
+                            <span class="badge"
+                                  th:classappend="${responseProvided ? (responseStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-success') : (responseStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-primary')}"
+                                  th:text="${responseProvided ? (responseStatus == 'BREACHED' ? 'Response provided late' : 'Response provided') : (responseStatus == 'BREACHED' ? 'Response overdue' : 'On track')}">
+                            On track
+                        </span>
+                        </div>
+
+                        <div class="small text-muted">
+                            Expected by:
+                            <span th:if="${ticket.firstResponseDeadline() != null}"
+                                  th:text="${#temporals.format(ticket.firstResponseDeadline(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-18 14:00
+                        </span>
+                            <span th:if="${ticket.firstResponseDeadline() == null}">Not available</span>
+                        </div>
+
+                        <div class="small text-muted" th:if="${ticket.firstRespondedAt() != null}">
+                            Provided at:
+                            <span th:text="${#temporals.format(ticket.firstRespondedAt(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-18 15:07
+                        </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resolution -->
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100"
+                         th:with="resolutionStatus=${ticket.resolutionSlaStatus() != null ? ticket.resolutionSlaStatus().name() : 'N/A'},
+                              resolutionProvided=${ticket.resolvedAt() != null},
+                              ticketStatus=${ticket.status().name()}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h3 class="h6 mb-0">Resolution</h3>
+
+                            <span class="badge"
+                                  th:classappend="${resolutionProvided ? (resolutionStatus == 'BREACHED' ? ' bg-warning text-dark' : (ticketStatus == 'CLOSED' ? ' bg-success' : ' bg-info text-dark')) : (resolutionStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-primary')}"
+                                  th:text="${resolutionProvided ? (resolutionStatus == 'BREACHED' ? 'Resolution provided late' : (ticketStatus == 'CLOSED' ? 'Completed' : 'Resolution provided')) : (resolutionStatus == 'BREACHED' ? 'Resolution overdue' : 'On track')}">
+                            On track
+                        </span>
+                        </div>
+
+                        <div class="small text-muted">
+                            Expected by:
+                            <span th:if="${ticket.resolutionDeadline() != null}"
+                                  th:text="${#temporals.format(ticket.resolutionDeadline(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-20 10:00
+                        </span>
+                            <span th:if="${ticket.resolutionDeadline() == null}">Not available</span>
+                        </div>
+
+                        <div class="small text-muted" th:if="${ticket.resolvedAt() != null}">
+                            Provided at:
+                            <span th:text="${#temporals.format(ticket.resolvedAt(), 'yyyy-MM-dd HH:mm')}">
+                            2026-05-20 09:30
+                        </span>
+                        </div>
+
+                        <div class="small text-muted mt-2" th:if="${ticket.status().name() == 'RESOLVED'}">
+                            Please close the ticket if the issue is solved, or add a comment if you still need help.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="small text-muted mt-3">
+                These times are based on the ticket priority and may change if the ticket is reclassified.
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3">
         <!-- Timeline only for internal users -->
         <div class="col-lg-6" th:if="${isInternalUser}">
@@ -147,6 +318,12 @@
                                                 class="bi bi-chat-left-text"></i> Commented</span>
                                         <span th:case="'COMMENT_DELETED'"><i
                                                 class="bi bi-trash"></i> Comment deleted</span>
+                                        <span th:case="'FIRST_RESPONSE_SLA_BREACHED'" class="text-danger">
+                                            <i class="bi bi-exclamation-triangle"></i> First response SLA breached
+                                        </span>
+                                        <span th:case="'RESOLUTION_SLA_BREACHED'" class="text-danger">
+                                            <i class="bi bi-exclamation-triangle"></i> Resolution SLA breached
+                                        </span>
                                         <span th:case="*"><i class="bi bi-info-circle"></i> Event</span>
                                     </span>
                                 </div>
@@ -155,7 +332,8 @@
                             </div>
 
                             <div class="small text-muted">
-                                Actor: <span th:text="${e.actor().fullName()}">Actor full name</span>
+                                Actor:
+                                <span th:text="${e.actor() != null ? e.actor().fullName() : 'System'}">Actor full name</span>
                             </div>
 
                             <div class="small mt-1" th:switch="${e.eventType().name()}">
@@ -182,6 +360,22 @@
 
                                 <div th:case="'COMMENT_DELETED'">
                                     Comment deleted
+                                </div>
+
+                                <div th:case="'FIRST_RESPONSE_SLA_BREACHED'">
+                                    First response deadline was missed.
+                                    <span th:if="${e.payload().containsKey('firstResponseDeadline')}">
+                                        Deadline:
+                                        <span th:text="${e.payload()['firstResponseDeadline']}">2026-05-18T14:00:00Z</span>
+                                    </span>
+                                </div>
+
+                                <div th:case="'RESOLUTION_SLA_BREACHED'">
+                                    Resolution deadline was missed.
+                                    <span th:if="${e.payload().containsKey('resolutionDeadline')}">
+                                        Deadline:
+                                        <span th:text="${e.payload()['resolutionDeadline']}">2026-05-20T10:00:00Z</span>
+                                    </span>
                                 </div>
                             </div>
 

@@ -1,5 +1,6 @@
 package com.rolliedev.ticketflow.dto;
 
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 
@@ -14,5 +15,10 @@ public record TicketResponse(Long id,
                              UserSummary assignedTo,
                              Instant createdAt,
                              Instant modifiedAt,
-                             Instant resolvedAt) {
+                             Instant resolvedAt,
+                             Instant firstRespondedAt,
+                             Instant firstResponseDeadline,
+                             Instant resolutionDeadline,
+                             SlaStatus responseSlaStatus,
+                             SlaStatus resolutionSlaStatus) {
 }

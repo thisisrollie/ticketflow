@@ -5,6 +5,7 @@ import com.rolliedev.ticketflow.dto.ChangePriorityRequest;
 import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.TicketSearchFilter;
 import com.rolliedev.ticketflow.entity.enums.Role;
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.ResourceNotFoundException;
@@ -51,6 +52,8 @@ public class TicketController {
         model.addAttribute("priorities", TicketPriority.values());
         if (currentUser.hasAuthority(Role.ADMIN) || currentUser.hasAuthority(Role.AGENT)) {
             model.addAttribute("assignees", userService.findAllByRoleIn(Role.ADMIN, Role.AGENT));
+            model.addAttribute("responseSlaStatuses", SlaStatus.getResponseSlaStatuses());
+            model.addAttribute("resolutionSlaStatuses", SlaStatus.getResolutionSlaStatuses());
         }
 
         return "ticket/list";

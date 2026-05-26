@@ -19,7 +19,6 @@ public class TicketPredicateBuilder {
         QPredicates builder = QPredicates.builder()
                 .add(filter.status(), ticketEntity.status::eq)
                 .add(filter.priority(), ticketEntity.priority::eq)
-                .add(filter.assigneeId(), ticketEntity.assignedTo.id::eq)
                 .add(startOfNextDay(filter.createdBefore()), ticketEntity.createdAt::before)
                 .add(startOfDay(filter.createdAfter()), ticketEntity.createdAt::after);
 
@@ -30,6 +29,9 @@ public class TicketPredicateBuilder {
             builder.add(actor.getId(), ticketEntity.createdBy.id::eq);
         } else {
             builder.add(filter.creatorId(), ticketEntity.createdBy.id::eq);
+            builder.add(filter.assigneeId(), ticketEntity.assignedTo.id::eq);
+            builder.add(filter.responseSlaStatus(), ticketEntity.responseSlaStatus::eq);
+            builder.add(filter.resolutionSlaStatus(), ticketEntity.resolutionSlaStatus::eq);
         }
 
         return builder.build();
