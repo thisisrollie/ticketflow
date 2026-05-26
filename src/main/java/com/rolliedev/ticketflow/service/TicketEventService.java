@@ -33,6 +33,30 @@ public class TicketEventService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void recordFirstResponseSlaBreachedEvent(TicketEntity ticket) {
+        recordFirstResponseSlaBreachedEvent(ticket, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordFirstResponseSlaBreachedEvent(TicketEntity ticket, UserEntity actor) {
+        saveTicketEvent(ticket, actor, TicketEventType.FIRST_RESPONSE_SLA_BREACHED, Map.of(
+                "firstResponseDeadline", ticket.getFirstResponseDeadline().toString()
+        ));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordResolutionSlaBreachedEvent(TicketEntity ticket) {
+        recordResolutionSlaBreachedEvent(ticket, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordResolutionSlaBreachedEvent(TicketEntity ticket, UserEntity actor) {
+        saveTicketEvent(ticket, actor, TicketEventType.RESOLUTION_SLA_BREACHED, Map.of(
+                "resolutionDeadline", ticket.getResolutionDeadline().toString()
+        ));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void recordCreatedEvent(TicketEntity ticket, UserEntity actor) {
         saveTicketEvent(ticket, actor, TicketEventType.CREATED, Map.of(
                 "ticketId", ticket.getId().toString(),
@@ -55,6 +79,11 @@ public class TicketEventService {
                 "oldPriority", oldPriority.name(),
                 "newPriority", newPriority.name()
         ));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordStatusChangedEvent(TicketEntity ticket, TicketStatus oldStatus, TicketStatus newStatus) {
+        recordStatusChangedEvent(ticket, null, oldStatus, newStatus);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

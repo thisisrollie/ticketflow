@@ -19,3 +19,11 @@ spring:
     format:
       date: iso
       date-time: iso
+
+
+app:
+  ticket:
+    auto-close-after-days: 4
+    auto-close-check-delay-hours: 24
+  sla:
+    check-delay-ms: 60000
