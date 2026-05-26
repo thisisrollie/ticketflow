@@ -1,5 +1,6 @@
 package com.rolliedev.ticketflow.entity;
 
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import jakarta.persistence.CascadeType;
@@ -76,6 +77,20 @@ public class TicketEntity extends AuditingEntity<Long> {
     private String modifiedBy;
 
     private Instant resolvedAt;
+
+    private Instant firstRespondedAt;
+
+    private Instant firstResponseDeadline;
+
+    private Instant resolutionDeadline;
+
+    @Enumerated(EnumType.STRING)
+    private SlaStatus responseSlaStatus;
+
+    @Enumerated(EnumType.STRING)
+    private SlaStatus resolutionSlaStatus;
+
+    private Instant resolutionSlaPausedAt;
 
     @Builder.Default
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, orphanRemoval = true)
