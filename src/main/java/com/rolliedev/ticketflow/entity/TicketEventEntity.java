@@ -41,7 +41,7 @@ public class TicketEventEntity extends AuditingEntity<Long> {
     @JoinColumn(name = "ticket_id")
     private TicketEntity ticket;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "actor_id")
     private UserEntity actor;
 

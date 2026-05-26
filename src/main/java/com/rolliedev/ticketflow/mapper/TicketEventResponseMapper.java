@@ -15,7 +15,7 @@ public class TicketEventResponseMapper implements Mapper<TicketEventEntity, Tick
     public TicketEventResponse map(TicketEventEntity object) {
         return new TicketEventResponse(
                 object.getId(),
-                userSummaryMapper.map(object.getActor()),
+                object.getActor() != null ? userSummaryMapper.map(object.getActor()) : null,
                 object.getEventType(),
                 object.getPayload(),
                 object.getCreatedAt()

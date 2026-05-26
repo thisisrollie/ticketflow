@@ -31,6 +31,7 @@ public class CommentService {
     private final TicketEventService eventService;
     private final CommentResponseMapper commentMapper;
     private final AccessPolicy accessPolicy;
+    private final SlaService slaService;
 
     public Page<CommentResponse> findAllBy(Long ticketId, Pageable pageable) {
         return commentRepository.findAllByTicketIdOrderByCreatedAtAsc(ticketId, pageable)
@@ -56,12 +57,23 @@ public class CommentService {
 
         eventService.recordCommentedEvent(ticket, author, savedComment.getId());
 
+        if (countsAsFirstResponse(ticket, author)) {
+            ticket.setFirstRespondedAt(savedComment.getCreatedAt());
+            slaService.evaluateFirstResponse(ticket, author);
+        }
+
         if (author.getRole() == Role.CUSTOMER) {
             if (ticket.getStatus() == TicketStatus.WAITING_CUSTOMER || ticket.getStatus() == TicketStatus.RESOLVED) {
                 TicketStatus currentStatus = ticket.getStatus();
+
+                currentStatus.assertCanTransitionTo(TicketStatus.IN_PROGRESS);
+
+                slaService.resumeResolutionSlaClock(ticket, savedComment.getCreatedAt());
+
                 if (currentStatus == TicketStatus.RESOLVED) {
                     ticket.setResolvedAt(null);
                 }
+
                 ticket.setStatus(TicketStatus.IN_PROGRESS);
                 eventService.recordStatusChangedEvent(ticket, author, currentStatus, TicketStatus.IN_PROGRESS);
             }
@@ -97,5 +109,10 @@ public class CommentService {
     private UserEntity getUser(Integer userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> ResourceNotFoundException.user(userId));
+    }
+
+    private boolean countsAsFirstResponse(TicketEntity ticket, UserEntity author) {
+        return ticket.getFirstRespondedAt() == null &&
+               (author.getRole() == Role.ADMIN || author.getRole() == Role.AGENT);
     }
 }

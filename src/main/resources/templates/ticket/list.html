@@ -5,7 +5,7 @@
     <title>Tickets</title>
 </head>
 <body>
-<section>
+<section th:with="isInternalUser=${#authorization.expression('hasAnyAuthority(''ADMIN'', ''AGENT'')')}">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Tickets</h1>
         <a class="btn btn-primary" th:href="@{/tickets/new}">
@@ -49,7 +49,7 @@
                 <input class="form-control" type="date" name="createdBefore" th:value="*{createdBefore()}"/>
             </div>
 
-            <div class="col-md-2" th:if="${#authorization.expression('hasAnyAuthority(''ADMIN'', ''AGENT'')')}">
+            <div class="col-md-2" th:if="${isInternalUser}">
                 <label class="form-label">Assigned to</label>
                 <select class="form-select" th:field="*{assigneeId}">
                     <option value="">All</option>
@@ -57,6 +57,22 @@
                             th:text="${#authentication.principal.id == assignee.id() ? assignee.fullName().concat(' (Me)') : assignee.fullName()}">
                         Assignee name
                     </option>
+                </select>
+            </div>
+
+            <div class="col-md-2" th:if="${isInternalUser}">
+                <label class="form-label">Response SLA</label>
+                <select class="form-select" th:field="*{responseSlaStatus}">
+                    <option value="">All</option>
+                    <option th:each="s : ${responseSlaStatuses}" th:value="${s}" th:text="${s}"></option>
+                </select>
+            </div>
+
+            <div class="col-md-2" th:if="${isInternalUser}">
+                <label class="form-label">Resolution SLA</label>
+                <select class="form-select" th:field="*{resolutionSlaStatus}">
+                    <option value="">All</option>
+                    <option th:each="s : ${resolutionSlaStatuses}" th:value="${s}" th:text="${s}"></option>
                 </select>
             </div>
 
@@ -85,21 +101,89 @@
                     <th>Priority</th>
                     <th>Created</th>
                     <th>Assignee</th>
+                    <th th:text="${isInternalUser ? 'Response SLA' : 'First response'}">First response</th>
+                    <th th:text="${isInternalUser ? 'Resolution SLA' : 'Resolution'}">Resolution</th>
                     <th></th>
                 </tr>
                 </thead>
                 <tbody>
                 <tr th:if="${page.totalElements == 0}">
-                    <td colspan="7" class="text-center py-4 text-muted">No tickets found</td>
+                    <td colspan="9" class="text-center py-4 text-muted">No tickets found</td>
                 </tr>
 
                 <tr th:each="t : ${page.content}">
                     <td class="text-monospace" th:text="${t.id()}">1</td>
                     <td th:text="${t.title()}">Title</td>
-                    <td><span class="badge bg-secondary" th:text="${t.status()}">NEW</span></td>
+                    <td>
+                        <span class="badge bg-secondary" th:text="${t.status()}">NEW</span>
+                    </td>
                     <td th:text="${t.priority()}">MEDIUM</td>
                     <td th:text="${#temporals.format(t.createdAt(), 'yyyy-MM-dd HH:mm')}">2026-02-12</td>
                     <td th:text="${t.assignedTo() != null ? t.assignedTo().fullName() : '-'}">-</td>
+
+                    <!-- First response / Response SLA -->
+                    <td th:with="responseStatus=${t.responseSlaStatus() != null ? t.responseSlaStatus().name() : 'N/A'}, responseProvided=${t.firstRespondedAt() != null}">
+                        <span class="badge"
+                              th:classappend="${isInternalUser ?
+                                              (responseStatus == 'MET' ? ' bg-success' :
+                                              (responseStatus == 'BREACHED' ? ' bg-danger' :
+                                              (responseStatus == 'ON_TRACK' ? ' bg-primary' : ' bg-secondary'))) :
+                                              (responseProvided ?
+                                              (responseStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-success') :
+                                              (responseStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-primary'))}"
+                              th:text="${isInternalUser ? responseStatus :
+                                       (responseProvided ?
+                                       (responseStatus == 'BREACHED' ? 'Provided late' : 'Provided') :
+                                       (responseStatus == 'BREACHED' ? 'Overdue' : 'On track'))}">
+                            On track
+                        </span>
+
+                        <div class="small text-muted mt-1" th:if="${responseProvided}">
+                            <span th:text="${isInternalUser ? 'Responded: ' : 'Provided: '}">Provided: </span>
+                            <span th:text="${#temporals.format(t.firstRespondedAt(), 'MM-dd HH:mm')}">05-18 15:07</span>
+                        </div>
+
+                        <div class="small text-muted mt-1"
+                             th:if="${!responseProvided and t.firstResponseDeadline() != null}">
+                            <span th:text="${isInternalUser ? 'Due: ' : 'Expected: '}">Expected: </span>
+                            <span th:text="${#temporals.format(t.firstResponseDeadline(), 'MM-dd HH:mm')}">05-18 16:58</span>
+                        </div>
+                    </td>
+
+                    <!-- Resolution / Resolution SLA -->
+                    <td th:with="resolutionStatus=${t.resolutionSlaStatus() != null ? t.resolutionSlaStatus().name() : 'N/A'},
+                                 resolutionProvided=${t.resolvedAt() != null},
+                                 ticketStatus=${t.status().name()}">
+                        <span class="badge"
+                              th:classappend="${isInternalUser ?
+                                              (resolutionStatus == 'MET' ? ' bg-success' :
+                                              (resolutionStatus == 'BREACHED' ? ' bg-danger' :
+                                              (resolutionStatus == 'PAUSED' ? ' bg-info text-dark' :
+                                              (resolutionStatus == 'ON_TRACK' ? ' bg-primary' : ' bg-secondary')))) :
+                                              (resolutionProvided ?
+                                              (resolutionStatus == 'BREACHED' ? ' bg-warning text-dark' :
+                                              (ticketStatus == 'CLOSED' ? ' bg-success' : ' bg-info text-dark')) :
+                                              (resolutionStatus == 'BREACHED' ? ' bg-warning text-dark' : ' bg-primary'))}"
+                              th:text="${isInternalUser ? resolutionStatus :
+                                       (resolutionProvided ?
+                                       (resolutionStatus == 'BREACHED' ? 'Provided late' :
+                                       (ticketStatus == 'CLOSED' ? 'Completed' : 'Provided')) :
+                                       (resolutionStatus == 'BREACHED' ? 'Overdue' : 'On track'))}">
+                            On track
+                        </span>
+
+                        <div class="small text-muted mt-1" th:if="${resolutionProvided}">
+                            <span th:text="${isInternalUser ? 'Resolved: ' : 'Provided: '}">Provided: </span>
+                            <span th:text="${#temporals.format(t.resolvedAt(), 'MM-dd HH:mm')}">05-18 23:10</span>
+                        </div>
+
+                        <div class="small text-muted mt-1"
+                             th:if="${!resolutionProvided and t.resolutionDeadline() != null}">
+                            <span th:text="${isInternalUser ? 'Due: ' : 'Expected: '}">Expected: </span>
+                            <span th:text="${#temporals.format(t.resolutionDeadline(), 'MM-dd HH:mm')}">05-18 22:58</span>
+                        </div>
+                    </td>
+
                     <td class="text-end">
                         <a class="btn btn-sm btn-outline-primary" th:href="@{/tickets/{id}(id=${t.id()})}">
                             View

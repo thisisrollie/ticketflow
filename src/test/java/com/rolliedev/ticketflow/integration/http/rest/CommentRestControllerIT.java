@@ -31,8 +31,8 @@ public class CommentRestControllerIT extends AbstractRestIT {
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", ticket1.getId())
                         .with(httpBasic("clark.kent@gmail.com", "123")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.totalElements").value(2))
-                .andExpect(jsonPath("$.content.length()").value(2));
+                .andExpect(jsonPath("$.metadata.totalElements").value(3))
+                .andExpect(jsonPath("$.content.length()").value(3));
     }
 
     @Test
@@ -40,7 +40,7 @@ public class CommentRestControllerIT extends AbstractRestIT {
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", ticket1.getId())
                         .with(httpBasic("bruce.wayne@gmail.com", "123")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.totalElements").value(2));
+                .andExpect(jsonPath("$.metadata.totalElements").value(3));
     }
 
     @Test
@@ -48,7 +48,7 @@ public class CommentRestControllerIT extends AbstractRestIT {
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", ticket1.getId())
                         .with(httpBasic("lex.luthor@gmail.com", "123")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.totalElements").value(2));
+                .andExpect(jsonPath("$.metadata.totalElements").value(3));
     }
 
     @Test
@@ -69,7 +69,7 @@ public class CommentRestControllerIT extends AbstractRestIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.metadata.page").value(0))
                 .andExpect(jsonPath("$.metadata.size").value(1))
-                .andExpect(jsonPath("$.metadata.totalElements").value(2))
+                .andExpect(jsonPath("$.metadata.totalElements").value(3))
                 .andExpect(jsonPath("$.content.length()").value(1));
     }
 
@@ -230,13 +230,13 @@ public class CommentRestControllerIT extends AbstractRestIT {
     @Test
     void shouldDeleteCommentWhenCalledByCommentAuthor() throws Exception {
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}",
-                        ticket1.getId(), 1L)
+                        ticket1.getId(), 2L)
                         .with(httpBasic("clark.kent@gmail.com", "123")))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/comments", ticket1.getId())
                         .with(httpBasic("clark.kent@gmail.com", "123")))
-                .andExpect(jsonPath("$.metadata.totalElements").value(1));
+                .andExpect(jsonPath("$.metadata.totalElements").value(2));
     }
 
     @Test
@@ -249,9 +249,9 @@ public class CommentRestControllerIT extends AbstractRestIT {
 
     @Test
     void shouldReturn403WhenAgentTriesToDeleteAnotherUsersComment() throws Exception {
-        // comment 1 belongs to clark.kent
+        // comment 2 belongs to clark.kent
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}",
-                        ticket1.getId(), 1L)
+                        ticket1.getId(), 2L)
                         .with(httpBasic("bruce.wayne@gmail.com", "123")))
                 .andExpect(status().isForbidden());
     }
@@ -263,7 +263,7 @@ public class CommentRestControllerIT extends AbstractRestIT {
         flushAndClear();
 
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}",
-                        ticket1.getId(), 1L)
+                        ticket1.getId(), 2L)
                         .with(httpBasic("clark.kent@gmail.com", "123")))
                 .andExpect(status().isConflict());
     }
@@ -273,7 +273,7 @@ public class CommentRestControllerIT extends AbstractRestIT {
         // comment 1 belongs to ticket1, not ticket2
         mockMvc.perform(delete("/api/v1/tickets/{ticketId}/comments/{commentId}",
                         ticket2.getId(), 1L)
-                        .with(httpBasic("clark.kent@gmail.com", "123")))
+                        .with(httpBasic("lex.luthor@gmail.com", "123")))
                 .andExpect(status().isBadRequest());
     }
 

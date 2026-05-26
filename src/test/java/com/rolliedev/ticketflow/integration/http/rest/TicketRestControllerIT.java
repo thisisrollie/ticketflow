@@ -6,6 +6,7 @@ import com.rolliedev.ticketflow.dto.CreateTicketRequest;
 import com.rolliedev.ticketflow.dto.PublicRegistrationRequest;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.testsupport.base.AbstractRestIT;
@@ -47,7 +48,11 @@ public class TicketRestControllerIT extends AbstractRestIT {
                 .andExpect(jsonPath("$.id").value(ticket1.getId()))
                 .andExpect(jsonPath("$.title").value("Cannot log in"))
                 .andExpect(jsonPath("$.status").value(TicketStatus.IN_PROGRESS.name()))
-                .andExpect(jsonPath("$.priority").value(TicketPriority.HIGH.name()));
+                .andExpect(jsonPath("$.priority").value(TicketPriority.HIGH.name()))
+                .andExpect(jsonPath("$.firstResponseDeadline").exists())
+                .andExpect(jsonPath("$.resolutionDeadline").exists())
+                .andExpect(jsonPath("$.responseSlaStatus").value(SlaStatus.MET.name()))
+                .andExpect(jsonPath("$.resolutionSlaStatus").value(SlaStatus.BREACHED.name()));
     }
 
     @Test
@@ -163,7 +168,7 @@ public class TicketRestControllerIT extends AbstractRestIT {
         mockMvc.perform(get("/api/v1/tickets/{id}/events", ticket1.getId())
                         .with(httpBasic("lex.luthor@gmail.com", "123")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.totalElements").value(6))
+                .andExpect(jsonPath("$.metadata.totalElements").value(7))
                 .andExpect(jsonPath("$.content").isArray());
     }
 
@@ -172,7 +177,7 @@ public class TicketRestControllerIT extends AbstractRestIT {
         mockMvc.perform(get("/api/v1/tickets/{id}/events", ticket1.getId())
                         .with(httpBasic("bruce.wayne@gmail.com", "123")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.totalElements").value(6));
+                .andExpect(jsonPath("$.metadata.totalElements").value(7));
     }
 
     @Test
@@ -184,7 +189,7 @@ public class TicketRestControllerIT extends AbstractRestIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.metadata.page").value(0))
                 .andExpect(jsonPath("$.metadata.size").value(3))
-                .andExpect(jsonPath("$.metadata.totalElements").value(6))
+                .andExpect(jsonPath("$.metadata.totalElements").value(7))
                 .andExpect(jsonPath("$.content.length()").value(3));
     }
 
@@ -228,7 +233,13 @@ public class TicketRestControllerIT extends AbstractRestIT {
                 .andExpect(jsonPath("$.title").value("Printer not working"))
                 .andExpect(jsonPath("$.description").value("Office printer is offline"))
                 .andExpect(jsonPath("$.status").value(TicketStatus.NEW.name()))
-                .andExpect(jsonPath("$.priority").value(TicketPriority.MEDIUM.name()));
+                .andExpect(jsonPath("$.priority").value(TicketPriority.MEDIUM.name()))
+                .andExpect(jsonPath("$.firstResponseDeadline").exists())
+                .andExpect(jsonPath("$.resolutionDeadline").exists())
+                .andExpect(jsonPath("$.responseSlaStatus").value(SlaStatus.ON_TRACK.name()))
+                .andExpect(jsonPath("$.resolutionSlaStatus").value(SlaStatus.ON_TRACK.name()))
+                .andExpect(jsonPath("$.firstRespondedAt").isEmpty())
+                .andExpect(jsonPath("$.resolvedAt").isEmpty());
     }
 
     @Test

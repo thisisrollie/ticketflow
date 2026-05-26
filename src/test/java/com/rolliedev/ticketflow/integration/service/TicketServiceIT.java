@@ -7,6 +7,7 @@ import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.Role;
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
@@ -35,6 +36,7 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.jdbc.SqlMergeMode;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -91,7 +93,9 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     void shouldReturnOnlyTicketsWithMatchingStatusWhenStatusFilterIsProvided() {
         TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
-        TicketSearchFilter filter = TicketSearchFilter.builder().status(TicketStatus.NEW).build();
+        TicketSearchFilter filter = TicketSearchFilter.builder()
+                .status(TicketStatus.NEW)
+                .build();
 
         Page<TicketResponse> actualResult = ticketService.findAll(filter, PageRequest.of(0, 10), adminDetails);
 
@@ -104,7 +108,9 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     void shouldReturnOnlyTicketsWithMatchingPriorityWhenPriorityFilterIsProvided() {
         TicketFlowUserDetails adminDetails = new TicketFlowUserDetails(admin);
-        TicketSearchFilter filter = TicketSearchFilter.builder().priority(TicketPriority.HIGH).build();
+        TicketSearchFilter filter = TicketSearchFilter.builder()
+                .priority(TicketPriority.HIGH)
+                .build();
 
         Page<TicketResponse> actualResult = ticketService.findAll(filter, PageRequest.of(0, 10), adminDetails);
 
@@ -152,7 +158,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     }
 
     @Test
-    void shouldPersistTicketWithCorrectDefaultsAndRecordCreatedEvent() {
+    void shouldPersistTicketWithCorrectDefaultsInitializeSlaAndRecordCreatedEvent() {
         CreateTicketRequest request = new CreateTicketRequest(
                 "New issue",
                 "Something is not working"
@@ -162,6 +168,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
         flushAndClear();
 
         TicketEntity persisted = ticketRepository.findById(actualResult.id()).orElseThrow();
+
         assertThat(persisted.getTitle()).isEqualTo("New issue");
         assertThat(persisted.getDescription()).isEqualTo("Something is not working");
         assertThat(persisted.getStatus()).isEqualTo(TicketStatus.NEW);
@@ -169,12 +176,18 @@ class TicketServiceIT extends AbstractSpringBootIT {
         assertThat(persisted.getCreatedBy().getId()).isEqualTo(customer.getId());
         assertThat(persisted.getAssignedTo()).isNull();
 
-        boolean createdEventExists = eventRepository
-                .findAllByTicketId(persisted.getId(), Pageable.unpaged())
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.CREATED);
+        assertThat(persisted.getFirstRespondedAt()).isNull();
+        assertThat(persisted.getResolvedAt()).isNull();
+        assertThat(persisted.getFirstResponseDeadline()).isNotNull();
+        assertThat(persisted.getResolutionDeadline()).isNotNull();
+        assertThat(persisted.getResponseSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(persisted.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(persisted.getResolutionSlaPausedAt()).isNull();
 
-        assertThat(createdEventExists).isTrue();
+        assertThat(persisted.getFirstResponseDeadline()).isAfter(persisted.getCreatedAt());
+        assertThat(persisted.getResolutionDeadline()).isAfter(persisted.getCreatedAt());
+
+        assertThat(hasEvent(persisted.getId(), TicketEventType.CREATED)).isTrue();
     }
 
     @Test
@@ -189,27 +202,24 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @WithMockUser(authorities = "ADMIN")
     void shouldAssignUnassignedTicketAndRecordEventWhenActorIsAdmin() {
         // ticket2 is unassigned
-        TicketResponse actualResult = ticketService.assign(ticket2.getId(), admin.getId(), agent.getId());
+        ticketService.assign(ticket2.getId(), admin.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
-        assertThat(updated.getAssignedTo().getId()).isEqualTo(agent.getId());
 
-        boolean assignedEventExists = eventRepository
-                .findAllByTicketId(ticket2.getId(), Pageable.unpaged())
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.ASSIGNED);
-        assertThat(assignedEventExists).isTrue();
+        assertThat(updated.getAssignedTo().getId()).isEqualTo(agent.getId());
+        assertThat(hasEvent(ticket2.getId(), TicketEventType.ASSIGNED)).isTrue();
     }
 
     @Test
     @WithMockUser(authorities = "ADMIN")
     void shouldReassignTicketWhenActorIsAdmin() {
         // ticket1 is assigned to agent — admin can reassign
-        TicketResponse actualResult = ticketService.assign(ticket1.getId(), admin.getId(), admin.getId());
+        ticketService.assign(ticket1.getId(), admin.getId(), admin.getId());
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
         assertThat(updated.getAssignedTo().getId()).isEqualTo(admin.getId());
     }
 
@@ -247,12 +257,13 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @Test
     @WithMockUser(authorities = "ADMIN")
     void shouldNotRecordEventWhenAssigneeIsAlreadyAssigned() {
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.assign(ticket1.getId(), admin.getId(), agent.getId());
         flushAndClear();
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
+
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
 
@@ -264,61 +275,102 @@ class TicketServiceIT extends AbstractSpringBootIT {
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(updated.getAssignedTo().getId()).isEqualTo(agent.getId());
 
-        List<TicketEventEntity> events = eventRepository.findAllByTicketId(ticket2.getId(), Pageable.unpaged()).getContent();
-        assertThat(events)
+        assertThat(events(ticket2.getId()))
                 .extracting(TicketEventEntity::getEventType)
                 .contains(TicketEventType.ASSIGNED, TicketEventType.STATUS_CHANGED);
     }
 
     @Test
     @WithMockUser(authorities = "AGENT")
-    void shouldClearResolvedAtAndChangeStatusToInProgressWhenResolvedTicketIsStartedAgain() {
+    void shouldResumeResolutionSlaAndExtendDeadlineWhenWaitingCustomerTicketIsStartedAgain() {
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant pausedAt = now.minus(2, ChronoUnit.HOURS);
+
+        ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
+        ticket1.setAssignedTo(agent);
+        ticket1.setResolutionDeadline(originalDeadline);
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(pausedAt);
+        ticket1.setResolvedAt(null);
+        ticketRepository.saveAndFlush(ticket1);
+        flushAndClear();
+
+        ticketService.startProgress(ticket1.getId(), agent.getId());
+        flushAndClear();
+
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updated.getResolutionSlaPausedAt()).isNull();
+        assertThat(updated.getResolutionDeadline()).isAfter(originalDeadline);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldClearResolvedAtAndResumeInternalWorkWithoutExtendingDeadlineWhenResolvedTicketIsStartedAgain() {
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant resolvedAt = now.minus(1, ChronoUnit.HOURS);
+
         ticket2.setStatus(TicketStatus.RESOLVED);
         ticket2.setAssignedTo(agent);
-        ticket2.setResolvedAt(Instant.now());
-        ticketRepository.save(ticket2);
+        ticket2.setResolvedAt(resolvedAt);
+        ticket2.setResolutionDeadline(originalDeadline);
+        ticket2.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket2.setResolutionSlaPausedAt(resolvedAt);
+        ticketRepository.saveAndFlush(ticket2);
         flushAndClear();
 
         ticketService.startProgress(ticket2.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket2.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(updated.getResolvedAt()).isNull();
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updated.getResolutionSlaPausedAt()).isNull();
+        assertInstantsEqualAtDbPrecision(updated.getResolutionDeadline(), originalDeadline);
     }
 
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldNotRecordNewEventWhenTicketIsAlreadyInProgress() {
         // ticket1 is already IN_PROGRESS
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.startProgress(ticket1.getId(), agent.getId());
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
+
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
 
     @Test
     @WithMockUser(authorities = "AGENT")
-    void shouldChangeStatusToWaitingCustomerAndRecordEventWhenTicketIsInProgress() {
+    void shouldChangeStatusToWaitingCustomerSetFirstResponseAndPauseResolutionSlaWhenTicketIsInProgress() {
+        prepareInProgressTicketWithActiveSlas(ticket1);
+
         ticketService.requestCustomerInfo(ticket1.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.WAITING_CUSTOMER);
+        assertThat(updated.getFirstRespondedAt()).isNotNull();
+        assertThat(updated.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
+        assertThat(updated.getResolutionSlaPausedAt()).isNotNull();
 
-        boolean statusEventExists = eventRepository
-                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
-                .stream()
-                .findFirst()
-                .filter(event -> event.getEventType() == TicketEventType.STATUS_CHANGED)
-                .isPresent();
-
-        assertThat(statusEventExists).isTrue();
+        assertThat(latestEvent(ticket1.getId()).getEventType()).isEqualTo(TicketEventType.STATUS_CHANGED);
     }
 
     @Test
@@ -328,11 +380,11 @@ class TicketServiceIT extends AbstractSpringBootIT {
         ticketRepository.save(ticket1);
         flushAndClear();
 
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.requestCustomerInfo(ticket1.getId(), agent.getId());
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
 
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
@@ -341,6 +393,7 @@ class TicketServiceIT extends AbstractSpringBootIT {
     @WithMockUser(authorities = "AGENT")
     void shouldThrowInvalidStatusTransitionExceptionWhenChangingNewTicketToWaitingCustomer() {
         ticket2.setAssignedTo(agent);
+        ticketRepository.save(ticket2);
         flushAndClear();
 
         assertThatThrownBy(() -> ticketService.requestCustomerInfo(ticket2.getId(), agent.getId()))
@@ -350,46 +403,87 @@ class TicketServiceIT extends AbstractSpringBootIT {
 
     @Test
     @WithMockUser(authorities = "AGENT")
-    void shouldResolveTicketSetResolvedAtAndRecordEventWhenActorCanResolveTicket() {
+    void shouldResolveTicketSetResolvedAtFirstResponseAndPauseResolutionSlaWhenActorCanResolveTicket() {
+        prepareInProgressTicketWithActiveSlas(ticket1);
+
         ticketService.resolve(ticket1.getId(), agent.getId());
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(updated.getResolvedAt()).isNotNull();
+        assertInstantsEqualAtDbPrecision(updated.getFirstRespondedAt(), updated.getResolvedAt());
+        assertThat(updated.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
+        assertInstantsEqualAtDbPrecision(updated.getResolutionSlaPausedAt(), updated.getResolvedAt());
 
-        boolean statusEventExists = eventRepository
-                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
-                .stream()
-                .findFirst()
-                .filter(event -> event.getEventType() == TicketEventType.STATUS_CHANGED)
-                .isPresent();
+        assertThat(latestEvent(ticket1.getId()).getEventType()).isEqualTo(TicketEventType.STATUS_CHANGED);
+    }
 
-        assertThat(statusEventExists).isTrue();
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldResolveWaitingCustomerTicketByResumingThenPausingResolutionSlaAgain() {
+        Instant now = nowAtDbPrecision();
+
+        Instant originalDeadline = now.plus(2, ChronoUnit.DAYS);
+        Instant pausedAt = now.minus(2, ChronoUnit.HOURS);
+        Instant firstRespondedAt = now.minus(3, ChronoUnit.HOURS);
+
+        ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
+        ticket1.setAssignedTo(agent);
+        ticket1.setFirstRespondedAt(firstRespondedAt);
+        ticket1.setFirstResponseDeadline(now.plus(1, ChronoUnit.DAYS));
+        ticket1.setResponseSlaStatus(SlaStatus.MET);
+        ticket1.setResolutionDeadline(originalDeadline);
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(pausedAt);
+        ticket1.setResolvedAt(null);
+        ticketRepository.save(ticket1);
+        flushAndClear();
+
+        ticketService.resolve(ticket1.getId(), agent.getId());
+        flushAndClear();
+
+        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        assertThat(updated.getResolvedAt()).isNotNull();
+        assertInstantsEqualAtDbPrecision(updated.getFirstRespondedAt(), firstRespondedAt);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
+        assertInstantsEqualAtDbPrecision(updated.getResolutionSlaPausedAt(), updated.getResolvedAt());
+        assertThat(updated.getResolutionDeadline()).isAfter(originalDeadline);
     }
 
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldNotRecordNewEventWhenTicketIsAlreadyResolved() {
         ticket1.setStatus(TicketStatus.RESOLVED);
-        ticket1.setResolvedAt(Instant.now());
+        ticket1.setResolvedAt(nowAtDbPrecision());
         ticketRepository.save(ticket1);
         flushAndClear();
 
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.resolve(ticket1.getId(), agent.getId());
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
 
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
 
     @Test
     @WithMockUser(authorities = "CUSTOMER")
-    void shouldCloseTicketWhenResolvedTicketIsClosedByCustomer() {
+    void shouldCloseTicketAndMarkResolutionSlaAsMetWhenResolvedTicketIsClosedByCustomer() {
+        Instant now = nowAtDbPrecision();
+
+        Instant resolvedAt = now.minus(1, ChronoUnit.HOURS);
+
         ticket1.setStatus(TicketStatus.RESOLVED);
-        ticket1.setResolvedAt(Instant.now());
+        ticket1.setResolvedAt(resolvedAt);
+        ticket1.setResolutionDeadline(now.plus(2, ChronoUnit.DAYS));
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(resolvedAt);
         ticketRepository.save(ticket1);
         flushAndClear();
 
@@ -397,7 +491,10 @@ class TicketServiceIT extends AbstractSpringBootIT {
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.CLOSED);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updated.getResolutionSlaPausedAt()).isNull();
     }
 
     @Test
@@ -407,11 +504,12 @@ class TicketServiceIT extends AbstractSpringBootIT {
         ticketRepository.save(ticket1);
         flushAndClear();
 
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.closeByCustomer(ticket1.getId(), customer.getId());
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
+
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
 
@@ -424,32 +522,88 @@ class TicketServiceIT extends AbstractSpringBootIT {
     }
 
     @Test
-    @WithMockUser(authorities = "AGENT")
-    void shouldChangePriorityAndRecordEventWhenActorCanModifyTicket() {
-        ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.LOW);
+    void shouldAutoCloseResolvedTicketsOlderThanThresholdAndFinalizeResolutionSla() {
+        Instant threshold = Instant.parse("2026-02-25T00:00:00Z");
+        Instant oldResolvedAt = threshold.minus(1, ChronoUnit.HOURS);
+        Instant recentResolvedAt = threshold.plus(1, ChronoUnit.HOURS);
+
+        ticket1.setStatus(TicketStatus.RESOLVED);
+        ticket1.setResolvedAt(oldResolvedAt);
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(oldResolvedAt);
+        ticketRepository.save(ticket1);
+
+        ticket2.setStatus(TicketStatus.RESOLVED);
+        ticket2.setResolvedAt(recentResolvedAt);
+        ticket2.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket2.setResolutionSlaPausedAt(recentResolvedAt);
+        ticketRepository.save(ticket2);
+
         flushAndClear();
 
-        TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        int closedCount = ticketService.closeResolvedTicketsOlderThan(threshold);
+        flushAndClear();
+
+        TicketEntity closedTicket = ticketRepository.findById(ticket1.getId()).orElseThrow();
+        TicketEntity stillResolvedTicket = ticketRepository.findById(ticket2.getId()).orElseThrow();
+
+        assertThat(closedCount).isEqualTo(1);
+
+        assertThat(closedTicket.getStatus()).isEqualTo(TicketStatus.CLOSED);
+        assertThat(closedTicket.getResolutionSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(closedTicket.getResolutionSlaPausedAt()).isNull();
+
+        assertThat(stillResolvedTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        assertThat(stillResolvedTicket.getResolutionSlaStatus()).isEqualTo(SlaStatus.PAUSED);
+        assertThat(stillResolvedTicket.getResolutionSlaPausedAt()).isNotNull();
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldChangePriorityRecordEventAndUpdateActiveSlaDeadlinesWhenActorCanModifyTicket() {
+        CreateTicketRequest request = new CreateTicketRequest(
+                "Priority change SLA test",
+                "Testing priority change inside triage window"
+        );
+
+        TicketResponse createdResponse = ticketService.create(request, customer.getId());
+        flushAndClear();
+
+        TicketEntity ticket = ticketRepository.findById(createdResponse.id()).orElseThrow();
+
+        ticket.setStatus(TicketStatus.IN_PROGRESS);
+        ticket.setAssignedTo(agent);
+        ticket.setResolutionSlaPausedAt(null);
+        ticket.setResolvedAt(null);
+
+        ticketRepository.save(ticket);
+        flushAndClear();
+
+        TicketEntity preparedTicket = ticketRepository.findById(createdResponse.id()).orElseThrow();
+
+        Instant originalFirstResponseDeadline = preparedTicket.getFirstResponseDeadline();
+        Instant originalResolutionDeadline = preparedTicket.getResolutionDeadline();
+
+        ticketService.changePriority(preparedTicket.getId(), agent.getId(), TicketPriority.LOW);
+        flushAndClear();
+
+        TicketEntity updated = ticketRepository.findById(preparedTicket.getId()).orElseThrow();
+
         assertThat(updated.getPriority()).isEqualTo(TicketPriority.LOW);
+        assertThat(updated.getFirstResponseDeadline()).isAfter(originalFirstResponseDeadline);
+        assertThat(updated.getResolutionDeadline()).isAfter(originalResolutionDeadline);
 
-        boolean priorityEventExists = eventRepository
-                .findAllByTicketId(ticket1.getId(), Pageable.unpaged(Sort.by(Sort.Direction.DESC, "id")))
-                .stream()
-                .findFirst()
-                .filter(e -> e.getEventType() == TicketEventType.PRIORITY_CHANGED)
-                .isPresent();
-
-        assertThat(priorityEventExists).isTrue();
+        assertThat(latestEvent(updated.getId()).getEventType()).isEqualTo(TicketEventType.PRIORITY_CHANGED);
     }
 
     @Test
     @WithMockUser(authorities = "AGENT")
     void shouldNotRecordNewEventWhenPriorityIsAlreadyTheSame() {
-        long eventCountBefore = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountBefore = eventCount(ticket1.getId());
 
         ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.HIGH);
 
-        long eventCountAfter = eventRepository.findAllByTicketId(ticket1.getId(), Pageable.unpaged()).getTotalElements();
+        long eventCountAfter = eventCount(ticket1.getId());
 
         assertThat(eventCountAfter).isEqualTo(eventCountBefore);
     }
@@ -459,6 +613,19 @@ class TicketServiceIT extends AbstractSpringBootIT {
     void shouldThrowAccessDeniedExceptionWhenActorIsNotAssigneeOrAdmin() {
         assertThatThrownBy(() -> ticketService.changePriority(ticket2.getId(), agent.getId(), TicketPriority.LOW))
                 .isInstanceOf(TicketFlowAccessDeniedException.class);
+    }
+
+    @Test
+    @WithMockUser(authorities = "AGENT")
+    void shouldThrowBusinessRuleViolationExceptionWhenChangingPriorityOfClosedTicket() {
+        ticket1.setStatus(TicketStatus.CLOSED);
+        ticket1.setAssignedTo(agent);
+        ticketRepository.save(ticket1);
+        flushAndClear();
+
+        assertThatThrownBy(() -> ticketService.changePriority(ticket1.getId(), agent.getId(), TicketPriority.LOW))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessage("Closed tickets cannot be modified");
     }
 
     @Test
@@ -475,7 +642,24 @@ class TicketServiceIT extends AbstractSpringBootIT {
                 UserEntity user = DataUtils.getTransientUser("Lana", "Lang", Role.CUSTOMER);
                 setUpEm.persist(user);
 
-                TicketEntity ticket = DataUtils.getTransientTicket("test_title", "test_desc", TicketStatus.NEW, TicketPriority.MEDIUM, user, null);
+                Instant createdAt = nowAtDbPrecision();
+
+                TicketEntity ticket = DataUtils.getTransientTicket(
+                        "test_title",
+                        "test_desc",
+                        TicketStatus.NEW,
+                        TicketPriority.MEDIUM,
+                        user,
+                        null
+                );
+
+                ticket.setCreatedAt(createdAt);
+                ticket.setFirstResponseDeadline(createdAt.plus(1, ChronoUnit.DAYS));
+                ticket.setResolutionDeadline(createdAt.plus(3, ChronoUnit.DAYS));
+                ticket.setResponseSlaStatus(SlaStatus.ON_TRACK);
+                ticket.setResolutionSlaStatus(SlaStatus.ON_TRACK);
+                ticket.setResolutionSlaPausedAt(null);
+
                 setUpEm.persist(ticket);
 
                 setUpEm.getTransaction().commit();
@@ -535,5 +719,49 @@ class TicketServiceIT extends AbstractSpringBootIT {
         if (failure != null) {
             throw new RuntimeException(failure);
         }
+    }
+
+    private void prepareInProgressTicketWithActiveSlas(TicketEntity ticket) {
+        Instant now = nowAtDbPrecision();
+
+        ticket.setStatus(TicketStatus.IN_PROGRESS);
+        ticket.setAssignedTo(agent);
+        ticket.setFirstRespondedAt(null);
+        ticket.setFirstResponseDeadline(now.plus(1, ChronoUnit.HOURS));
+        ticket.setResponseSlaStatus(SlaStatus.ON_TRACK);
+        ticket.setResolutionDeadline(now.plus(2, ChronoUnit.DAYS));
+        ticket.setResolutionSlaStatus(SlaStatus.ON_TRACK);
+        ticket.setResolutionSlaPausedAt(null);
+        ticket.setResolvedAt(null);
+
+        ticketRepository.save(ticket);
+        flushAndClear();
+    }
+
+    private boolean hasEvent(Long ticketId, TicketEventType eventType) {
+        return events(ticketId).stream()
+                .anyMatch(e -> e.getEventType() == eventType);
+    }
+
+    private List<TicketEventEntity> events(Long ticketId) {
+        return eventRepository
+                .findAllByTicketId(ticketId, Pageable.unpaged())
+                .getContent();
+    }
+
+    private long eventCount(Long ticketId) {
+        return eventRepository
+                .findAllByTicketId(ticketId, Pageable.unpaged())
+                .getTotalElements();
+    }
+
+    private TicketEventEntity latestEvent(Long ticketId) {
+        return eventRepository
+                .findAllByTicketId(
+                        ticketId,
+                        PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "id"))
+                )
+                .getContent()
+                .getFirst();
     }
 }

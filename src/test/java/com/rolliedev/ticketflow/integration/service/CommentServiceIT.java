@@ -5,6 +5,7 @@ import com.rolliedev.ticketflow.entity.TicketCommentEntity;
 import com.rolliedev.ticketflow.entity.TicketEntity;
 import com.rolliedev.ticketflow.entity.TicketEventEntity;
 import com.rolliedev.ticketflow.entity.UserEntity;
+import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketEventType;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.exception.BusinessRuleViolationException;
@@ -23,6 +24,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -32,7 +35,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
     @Autowired
     private CommentService commentService;
     @Autowired
-    private TicketCommentRepository commentRepo;
+    private TicketCommentRepository commentRepository;
 
     private UserEntity admin, agent, customer;
     private TicketEntity ticket1, ticket2;
@@ -47,17 +50,17 @@ class CommentServiceIT extends AbstractSpringBootIT {
         ticket1 = ticketRepository.findById(1L).orElseThrow();
         ticket2 = ticketRepository.findById(2L).orElseThrow();
 
-        comment1 = commentRepo.findById(1L).orElseThrow();
+        comment1 = commentRepository.findById(1L).orElseThrow();
     }
 
     @Test
     void shouldReturnMappedPageOfCommentsOnGivenTicket() {
         Page<CommentResponse> actualResult = commentService.findAllBy(ticket1.getId(), PageRequest.of(0, 10));
 
-        assertThat(actualResult.getTotalElements()).isEqualTo(2);
+        assertThat(actualResult.getTotalElements()).isEqualTo(3);
         assertThat(actualResult.getContent())
                 .extracting(CommentResponse::id)
-                .containsExactlyInAnyOrder(1L, 2L);
+                .containsExactlyInAnyOrder(1L, 2L, 3L);
     }
 
     @Test
@@ -68,7 +71,9 @@ class CommentServiceIT extends AbstractSpringBootIT {
     }
 
     @Test
-    void shouldCreateCommentAndRecordEventWhenCustomerCommentsOnOwnTicket() {
+    void shouldCreateCommentRecordEventAndNotAffectSlaWhenCustomerCommentsOnOwnTicket() {
+        prepareNewTicketWithActiveSlas(ticket2);
+
         CommentResponse actualResult = commentService.create(
                 ticket2.getId(),
                 customer.getId(),
@@ -76,39 +81,46 @@ class CommentServiceIT extends AbstractSpringBootIT {
         );
         flushAndClear();
 
-        TicketCommentEntity persisted = commentRepo.findById(actualResult.id()).orElseThrow();
+        TicketCommentEntity persisted = commentRepository.findById(actualResult.id()).orElseThrow();
+        TicketEntity updatedTicket = ticketRepository.findById(ticket2.getId()).orElseThrow();
 
         assertThat(persisted.getTicket().getId()).isEqualTo(ticket2.getId());
         assertThat(persisted.getAuthor().getId()).isEqualTo(customer.getId());
         assertThat(persisted.getBody()).isEqualTo("I still need help with this billing issue");
 
-        boolean commentedEventExists = eventRepository
-                .findAllByTicketId(ticket2.getId(), Pageable.unpaged())
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.COMMENTED);
+        assertThat(updatedTicket.getStatus()).isEqualTo(TicketStatus.NEW);
+        assertThat(updatedTicket.getFirstRespondedAt()).isNull();
+        assertThat(updatedTicket.getResponseSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updatedTicket.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updatedTicket.getResolutionSlaPausedAt()).isNull();
 
-        assertThat(commentedEventExists).isTrue();
+        assertThat(hasEvent(ticket2.getId(), TicketEventType.COMMENTED)).isTrue();
     }
 
     @Test
-    void shouldCreateCommentAndRecordEventWhenAdminCommentsOnTicket() {
+    void shouldCreateCommentSetFirstResponseAndRecordEventWhenAdminCommentsOnTicket() {
+        prepareNewTicketWithActiveSlas(ticket2);
+
         CommentResponse actualResult = commentService.create(
                 ticket2.getId(),
                 admin.getId(),
-                "I am investigating this issue");
+                "I am investigating this issue"
+        );
         flushAndClear();
 
-        TicketCommentEntity persisted = commentRepo.findById(actualResult.id()).orElseThrow();
+        TicketCommentEntity persisted = commentRepository.findById(actualResult.id()).orElseThrow();
+        TicketEntity updatedTicket = ticketRepository.findById(ticket2.getId()).orElseThrow();
 
         assertThat(persisted.getTicket().getId()).isEqualTo(ticket2.getId());
         assertThat(persisted.getAuthor().getId()).isEqualTo(admin.getId());
         assertThat(persisted.getBody()).isEqualTo("I am investigating this issue");
 
-        boolean commentedEventExists = eventRepository.findAllByTicketId(ticket2.getId(), Pageable.unpaged())
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.COMMENTED);
+        assertThat(updatedTicket.getFirstRespondedAt()).isNotNull();
+        assertThat(updatedTicket.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updatedTicket.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updatedTicket.getResolutionSlaPausedAt()).isNull();
 
-        assertThat(commentedEventExists).isTrue();
+        assertThat(hasEvent(ticket2.getId(), TicketEventType.COMMENTED)).isTrue();
     }
 
     @Test
@@ -139,8 +151,19 @@ class CommentServiceIT extends AbstractSpringBootIT {
     }
 
     @Test
-    void shouldChangeTicketStatusToInProgressAndRecordEventWhenCustomerCommentsOnWaitingCustomerTicket() {
+    void shouldChangeTicketStatusToInProgressResumeResolutionSlaAndRecordEventsWhenCustomerCommentsOnWaitingCustomerTicket() {
+        Instant originalDeadline = Instant.now().plus(2, ChronoUnit.DAYS);
+        Instant pausedAt = Instant.now().minus(2, ChronoUnit.HOURS);
+
         ticket1.setStatus(TicketStatus.WAITING_CUSTOMER);
+        ticket1.setAssignedTo(agent);
+        ticket1.setResolvedAt(null);
+        ticket1.setFirstRespondedAt(Instant.now().minus(3, ChronoUnit.HOURS));
+        ticket1.setFirstResponseDeadline(Instant.now().plus(1, ChronoUnit.DAYS));
+        ticket1.setResponseSlaStatus(SlaStatus.MET);
+        ticket1.setResolutionDeadline(originalDeadline);
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(pausedAt);
         ticketRepository.save(ticket1);
         flushAndClear();
 
@@ -148,18 +171,33 @@ class CommentServiceIT extends AbstractSpringBootIT {
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
 
-        Page<TicketEventEntity> lastTwoTicketEvents = eventRepository.findAllByTicketId(ticket1.getId(), PageRequest.of(0, 2, Sort.Direction.DESC, "id"));
-        assertThat(lastTwoTicketEvents)
+        assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(updated.getResolvedAt()).isNull();
+        assertThat(updated.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updated.getResolutionSlaPausedAt()).isNull();
+        assertThat(updated.getResolutionDeadline()).isAfter(originalDeadline);
+
+        assertThat(latestEvents(ticket1.getId(), 2))
                 .extracting(TicketEventEntity::getEventType)
                 .containsExactlyInAnyOrder(TicketEventType.COMMENTED, TicketEventType.STATUS_CHANGED);
     }
 
     @Test
-    void shouldReopenResolvedTicketAndClearResolvedAtWhenCustomerCommentsOnResolvedTicket() {
+    void shouldReopenResolvedTicketClearResolvedAtResumeResolutionSlaAndRecordEventsWhenCustomerCommentsOnResolvedTicket() {
+        Instant originalDeadline = Instant.now().plus(2, ChronoUnit.DAYS);
+        Instant resolvedAt = Instant.now().minus(1, ChronoUnit.HOURS);
+
         ticket1.setStatus(TicketStatus.RESOLVED);
-        ticket1.setResolvedAt(Instant.now());
+        ticket1.setAssignedTo(agent);
+        ticket1.setResolvedAt(resolvedAt);
+        ticket1.setFirstRespondedAt(resolvedAt);
+        ticket1.setFirstResponseDeadline(Instant.now().plus(1, ChronoUnit.DAYS));
+        ticket1.setResponseSlaStatus(SlaStatus.MET);
+        ticket1.setResolutionDeadline(originalDeadline);
+        ticket1.setResolutionSlaStatus(SlaStatus.PAUSED);
+        ticket1.setResolutionSlaPausedAt(resolvedAt);
         ticketRepository.save(ticket1);
         flushAndClear();
 
@@ -167,28 +205,26 @@ class CommentServiceIT extends AbstractSpringBootIT {
         flushAndClear();
 
         TicketEntity updated = ticketRepository.findById(ticket1.getId()).orElseThrow();
+
         assertThat(updated.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(updated.getResolvedAt()).isNull();
+        assertThat(updated.getResponseSlaStatus()).isEqualTo(SlaStatus.MET);
+        assertThat(updated.getResolutionSlaStatus()).isEqualTo(SlaStatus.ON_TRACK);
+        assertThat(updated.getResolutionSlaPausedAt()).isNull();
+        assertThat(updated.getResolutionDeadline()).isAfter(originalDeadline);
 
-        Page<TicketEventEntity> lastTwoTicketEvents = eventRepository.findAllByTicketId(ticket1.getId(), PageRequest.of(0, 2, Sort.Direction.DESC, "id"));
-        assertThat(lastTwoTicketEvents)
+        assertThat(latestEvents(ticket1.getId(), 2))
                 .extracting(TicketEventEntity::getEventType)
                 .containsExactlyInAnyOrder(TicketEventType.COMMENTED, TicketEventType.STATUS_CHANGED);
     }
 
     @Test
     void shouldDeleteCommentAndRecordEventWhenActorIsCommentAuthor() {
-        commentService.delete(ticket1.getId(), comment1.getId(), customer.getId());
+        commentService.delete(ticket1.getId(), comment1.getId(), agent.getId());
         flushAndClear();
 
-        assertThat(commentRepo.findById(comment1.getId())).isEmpty();
-
-        boolean deletedEventExists = eventRepository
-                .findAllByTicketId(ticket1.getId(), PageRequest.of(0, 1, Sort.Direction.DESC, "id"))
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.COMMENT_DELETED);
-
-        assertThat(deletedEventExists).isTrue();
+        assertThat(commentRepository.findById(comment1.getId())).isEmpty();
+        assertThat(latestEvent(ticket1.getId()).getEventType()).isEqualTo(TicketEventType.COMMENT_DELETED);
     }
 
     @Test
@@ -196,14 +232,8 @@ class CommentServiceIT extends AbstractSpringBootIT {
         commentService.delete(ticket1.getId(), comment1.getId(), admin.getId());
         flushAndClear();
 
-        assertThat(commentRepo.findById(comment1.getId())).isEmpty();
-
-        boolean deletedEventExists = eventRepository
-                .findAllByTicketId(ticket1.getId(), PageRequest.of(0, 1, Sort.Direction.DESC, "id"))
-                .stream()
-                .anyMatch(e -> e.getEventType() == TicketEventType.COMMENT_DELETED);
-
-        assertThat(deletedEventExists).isTrue();
+        assertThat(commentRepository.findById(comment1.getId())).isEmpty();
+        assertThat(latestEvent(ticket1.getId()).getEventType()).isEqualTo(TicketEventType.COMMENT_DELETED);
     }
 
     @Test
@@ -229,7 +259,7 @@ class CommentServiceIT extends AbstractSpringBootIT {
 
     @Test
     void shouldThrowAccessDeniedExceptionWhenActorIsNotAdminOrCommentAuthor() {
-        assertThatThrownBy(() -> commentService.delete(ticket1.getId(), comment1.getId(), agent.getId()))
+        assertThatThrownBy(() -> commentService.delete(ticket1.getId(), comment1.getId(), customer.getId()))
                 .isInstanceOf(TicketFlowAccessDeniedException.class)
                 .hasMessageContaining("Only admins or the comment author can delete a comment");
     }
@@ -240,8 +270,49 @@ class CommentServiceIT extends AbstractSpringBootIT {
         ticketRepository.save(ticket1);
         flushAndClear();
 
-        assertThatThrownBy(() -> commentService.delete(ticket1.getId(), comment1.getId(), customer.getId()))
+        assertThatThrownBy(() -> commentService.delete(ticket1.getId(), comment1.getId(), agent.getId()))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("Closed tickets cannot be modified");
+    }
+
+    private void prepareNewTicketWithActiveSlas(TicketEntity ticket) {
+        Instant now = Instant.now();
+
+        ticket.setStatus(TicketStatus.NEW);
+        ticket.setAssignedTo(null);
+        ticket.setFirstRespondedAt(null);
+        ticket.setFirstResponseDeadline(now.plus(1, ChronoUnit.HOURS));
+        ticket.setResponseSlaStatus(SlaStatus.ON_TRACK);
+        ticket.setResolutionDeadline(now.plus(2, ChronoUnit.DAYS));
+        ticket.setResolutionSlaStatus(SlaStatus.ON_TRACK);
+        ticket.setResolutionSlaPausedAt(null);
+        ticket.setResolvedAt(null);
+
+        ticketRepository.save(ticket);
+        flushAndClear();
+    }
+
+    private boolean hasEvent(Long ticketId, TicketEventType eventType) {
+        return events(ticketId).stream()
+                .anyMatch(e -> e.getEventType() == eventType);
+    }
+
+    private List<TicketEventEntity> events(Long ticketId) {
+        return eventRepository
+                .findAllByTicketId(ticketId, Pageable.unpaged())
+                .getContent();
+    }
+
+    private TicketEventEntity latestEvent(Long ticketId) {
+        return latestEvents(ticketId, 1).getFirst();
+    }
+
+    private List<TicketEventEntity> latestEvents(Long ticketId, int count) {
+        return eventRepository
+                .findAllByTicketId(
+                        ticketId,
+                        PageRequest.of(0, count, Sort.by(Sort.Direction.DESC, "id"))
+                )
+                .getContent();
     }
 }
