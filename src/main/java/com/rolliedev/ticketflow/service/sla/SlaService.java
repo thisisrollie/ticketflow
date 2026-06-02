@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.service;
+package com.rolliedev.ticketflow.service.sla;
 
 import com.rolliedev.ticketflow.dto.SlaPolicy;
 import com.rolliedev.ticketflow.entity.TicketEntity;
@@ -6,7 +6,7 @@ import com.rolliedev.ticketflow.entity.UserEntity;
 import com.rolliedev.ticketflow.entity.enums.SlaStatus;
 import com.rolliedev.ticketflow.entity.enums.TicketStatus;
 import com.rolliedev.ticketflow.repository.TicketRepository;
-import com.rolliedev.ticketflow.sla.SlaPolicyProvider;
+import com.rolliedev.ticketflow.service.TicketEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

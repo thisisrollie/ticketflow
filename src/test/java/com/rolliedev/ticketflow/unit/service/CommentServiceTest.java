@@ -16,7 +16,7 @@ import com.rolliedev.ticketflow.repository.TicketCommentRepository;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import com.rolliedev.ticketflow.service.CommentService;
-import com.rolliedev.ticketflow.service.SlaService;
+import com.rolliedev.ticketflow.service.sla.SlaService;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

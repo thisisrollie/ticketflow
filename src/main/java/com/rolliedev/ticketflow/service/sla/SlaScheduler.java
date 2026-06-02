@@ -1,6 +1,5 @@
-package com.rolliedev.ticketflow.sla;
+package com.rolliedev.ticketflow.service.sla;
 
-import com.rolliedev.ticketflow.service.SlaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

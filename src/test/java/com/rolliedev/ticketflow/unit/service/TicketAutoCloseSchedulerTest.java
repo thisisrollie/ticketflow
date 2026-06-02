@@ -1,7 +1,7 @@
 package com.rolliedev.ticketflow.unit.service;
 
 import com.rolliedev.ticketflow.config.TicketProperties;
-import com.rolliedev.ticketflow.service.TicketAutoCloseScheduler;
+import com.rolliedev.ticketflow.service.sla.TicketAutoCloseScheduler;
 import com.rolliedev.ticketflow.service.TicketService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
