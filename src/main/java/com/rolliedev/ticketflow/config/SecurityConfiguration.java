@@ -15,6 +15,8 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
+import static com.rolliedev.ticketflow.entity.enums.Role.ADMIN;
+
 @Configuration
 @EnableMethodSecurity
 @EnableWebSecurity
@@ -43,8 +45,8 @@ public class SecurityConfiguration {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/login", "/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/register").permitAll()
-                        .requestMatchers("/admin/**").hasAuthority("ADMIN")
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasAuthority("ADMIN")
+                        .requestMatchers("/admin/**").hasAuthority(ADMIN.getAuthority())
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasAuthority(ADMIN.getAuthority())
                         .anyRequest().authenticated())
                 .formLogin(login -> login
                         .loginPage("/login")
