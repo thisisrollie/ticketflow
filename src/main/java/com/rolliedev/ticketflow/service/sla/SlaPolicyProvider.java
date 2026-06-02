@@ -1,4 +1,4 @@
-package com.rolliedev.ticketflow.sla;
+package com.rolliedev.ticketflow.service.sla;
 
 import com.rolliedev.ticketflow.dto.SlaPolicy;
 import com.rolliedev.ticketflow.entity.enums.TicketPriority;

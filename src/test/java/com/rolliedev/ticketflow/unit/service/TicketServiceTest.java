@@ -20,7 +20,7 @@ import com.rolliedev.ticketflow.querydsl.TicketPredicateBuilder;
 import com.rolliedev.ticketflow.repository.TicketRepository;
 import com.rolliedev.ticketflow.repository.UserRepository;
 import com.rolliedev.ticketflow.security.TicketFlowUserDetails;
-import com.rolliedev.ticketflow.service.SlaService;
+import com.rolliedev.ticketflow.service.sla.SlaService;
 import com.rolliedev.ticketflow.service.TicketEventService;
 import com.rolliedev.ticketflow.service.TicketService;
 import org.junit.jupiter.api.Test;
