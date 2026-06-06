@@ -1,16 +1,11 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5433/ticketflow
-    username: postgres
-    password: postgres
-    driver-class-name: org.postgresql.Driver
+  application:
+    name: ticketflow
+
+  profiles:
+    default: dev
 
   jpa:
-    properties:
-      hibernate:
-        show_sql: true
-        format_sql: true
-        highlight_sql: true
     hibernate:
       ddl-auto: validate
     open-in-view: false
@@ -19,7 +14,6 @@ spring:
     format:
       date: iso
       date-time: iso
-
 
 app:
   ticket:

@@ -1,9 +1,17 @@
 spring:
   jpa:
+    show-sql: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        highlight_sql: false
+
+  liquibase:
+    contexts: test
 
 logging:
   level:
-    org.springframework.test.context.jdbc: debug
-#    org.springframework.jdbc.datasource.init: debug
+    com.rolliedev.ticketflow: INFO
+    org.springframework.test.context.jdbc: DEBUG
