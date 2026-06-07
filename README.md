@@ -355,7 +355,7 @@ The easiest way to run the full application stack is with Docker Compose:
 docker compose up --build
 ```
 
-This starts:
+This runs the application with the `dev` profile enabled and starts the complete local environment:
 
 - the Spring Boot application;
 - PostgreSQL database;
@@ -374,7 +374,7 @@ Swagger UI will be available at:
 http://localhost:8080/swagger-ui/index.html
 ```
 
-To stop the containers:
+To stop the running containers:
 
 ```bash
 docker compose down
@@ -457,6 +457,8 @@ The shared configuration is defined in `application.yml`.
 | `test`  | Used for automated tests with test-specific configuration and Testcontainers-based PostgreSQL execution.                             |
 | `prod`  | Used for production-like runtime with environment-based datasource configuration, SQL logging disabled, and structured file logging. |
 
+Profiles are activated explicitly. The application does not use `dev` as a fallback profile, which prevents development demo data from being loaded accidentally.
+
 ### Development Profile
 
 The `dev` profile is intended for local development and demo usage.
@@ -468,8 +470,7 @@ It includes:
 - Liquibase `dev` context for loading demo data;
 - more verbose application logging.
 
-When the full stack is started with Docker Compose, datasource values are provided through container environment
-variables.
+The `dev` profile is activated explicitly when running the application through Docker Compose or with the Maven command shown in the Quick Start section.
 
 ### Test Profile
 
@@ -493,7 +494,13 @@ It includes:
 - SQL query logging disabled;
 - structured file logs with a rolling policy.
 
-The `prod` profile expects the following datasource variables:
+The `prod` profile should be activated explicitly in production-like deployments:
+
+```text
+SPRING_PROFILES_ACTIVE=prod
+```
+
+It also expects the following datasource variables:
 
 ```text
 SPRING_DATASOURCE_URL

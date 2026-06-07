@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset rollie:demo-users context:dev
+--changeset rollie:demo-users context:@dev
 INSERT INTO users (id, full_name, email, role, created_at, password, audit_created_by)
 VALUES (1001, 'Lex Luthor', 'lex.luthor@ticketflow.dev', 'ADMIN', now() - interval '90 days', '{noop}123', 'demo-data'),
        (1002, 'Bruce Wayne', 'bruce.wayne@ticketflow.dev', 'AGENT', now() - interval '80 days', '{noop}123',
@@ -15,7 +15,7 @@ VALUES (1001, 'Lex Luthor', 'lex.luthor@ticketflow.dev', 'ADMIN', now() - interv
 SELECT setval('users_id_seq', GREATEST((SELECT max(id) FROM users), 1005));
 
 
---changeset rollie:demo-tickets context:dev
+--changeset rollie:demo-tickets context:@dev
 INSERT INTO tickets (id,
                      title,
                      description,
@@ -229,7 +229,7 @@ VALUES (1001,
 SELECT setval('tickets_id_seq', GREATEST((SELECT max(id) FROM tickets), 1010));
 
 
---changeset rollie:demo-comments context:dev
+--changeset rollie:demo-comments context:@dev
 INSERT INTO ticket_comments (id, ticket_id, author_id, body, created_at, audit_created_by)
 VALUES (1001, 1003, 1004, 'The payment page fails right after my bank confirms the card payment.',
         now() - interval '5 hours 30 minutes', 'clark.kent@ticketflow.dev'),
@@ -259,7 +259,7 @@ VALUES (1001, 1003, 1004, 'The payment page fails right after my bank confirms t
 SELECT setval('ticket_comments_id_seq', GREATEST((SELECT max(id) FROM ticket_comments), 1012));
 
 
---changeset rollie:demo-events context:dev
+--changeset rollie:demo-events context:@dev
 INSERT INTO ticket_events (id, ticket_id, actor_id, event_type, payload, created_at, audit_created_by)
 VALUES (1001, 1001, 1004, 'CREATED', '{
   "ticketId": "1001",
