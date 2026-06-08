@@ -1,8 +1,7 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: ticketflow-postgres
-    restart: unless-stopped
     environment:
       POSTGRES_DB: ticketflow
       POSTGRES_USER: postgres
@@ -10,12 +9,30 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - ticketflow_pgdata:/var/lib/postgresql/data
+      - ticketflow-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: ticketflow-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ticketflow
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      LOG_PATH: /app/logs
+    ports:
+      - "8080:8080"
+    volumes:
+      - ticketflow-app-logs:/app/logs
 
 volumes:
-  ticketflow_pgdata:
+  ticketflow-postgres-data:
+  ticketflow-app-logs:
